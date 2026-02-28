@@ -7,6 +7,7 @@ import logging
 from prefect import task
 
 from grok_spicy.client import MODEL_REASONING, get_client, to_base64
+from grok_spicy.prompts import describe_ref_user_prompt
 from grok_spicy.schemas import CharacterDescription
 
 logger = logging.getLogger(__name__)
@@ -42,8 +43,7 @@ def describe_reference_image(name: str, image_path: str) -> CharacterDescription
     chat.append(system(DESCRIBE_PROMPT))
     chat.append(
         user(
-            f"Describe the person in this reference photo. "
-            f"The character's name is '{name}'.",
+            describe_ref_user_prompt(name),
             image(ref_b64),
         )
     )

@@ -7,6 +7,8 @@ import logging
 import os
 import shutil
 import subprocess
+from collections.abc import Callable
+from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -155,6 +157,27 @@ def reword_prompt(prompt: str) -> str:
         reworded,
     )
     return reworded
+
+
+def generate_with_moderation_retry(
+    generate_fn: Callable[..., Any],
+    prompt: str,
+    max_rewords: int = MAX_REWORD_ATTEMPTS,
+    **generate_kw: Any,
+) -> tuple[Any, str, bool]:
+    """Run *generate_fn(prompt=prompt, **generate_kw)* with moderation rewording.
+
+    Returns ``(result, final_prompt, still_moderated)``.
+    """
+    result = generate_fn(prompt=prompt, **generate_kw)
+    for _rw in range(max_rewords):
+        if not is_moderated(result.url):
+            return result, prompt, False
+        logger.warning("Moderation hit (reword %d/%d)", _rw + 1, max_rewords)
+        prompt = reword_prompt(prompt)
+        result = generate_fn(prompt=prompt, **generate_kw)
+    still_moderated = is_moderated(result.url)
+    return result, prompt, still_moderated
 
 
 # ─── Frame extraction ────────────────────────────────────────

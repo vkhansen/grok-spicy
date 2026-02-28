@@ -7,67 +7,29 @@ import logging
 from prefect import task
 
 from grok_spicy.client import (
-    CONSISTENCY_THRESHOLD,
-    MAX_KEYFRAME_ITERS,
-    MAX_REWORD_ATTEMPTS,
     MODEL_IMAGE,
     MODEL_REASONING,
     download,
+    generate_with_moderation_retry,
     get_client,
-    is_moderated,
-    reword_prompt,
+)
+from grok_spicy.prompts import (
+    append_negative_prompt,
+    build_video_prompt,
+    fix_prompt_from_issues,
+    keyframe_compose_prompt,
+    keyframe_vision_prompt,
 )
 from grok_spicy.schemas import (
     CharacterAsset,
     ConsistencyScore,
     KeyframeAsset,
+    PipelineConfig,
     Scene,
     StoryPlan,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def build_video_prompt(scene: Scene, plan: StoryPlan) -> str:
-    """Build a video motion prompt, with stronger constraints for extended scenes.
-
-    Standard tier (<=8s): concise prompt — the correction loop compensates for drift.
-    Extended tier (>8s): sequenced timing, key-phrase repetition, and negative
-    constraints to compensate for the absence of drift correction.
-    """
-    base = (
-        f"{scene.prompt_summary} "
-        f"{scene.camera}. {scene.action}. "
-        f"{scene.mood}. {plan.style}. "
-        f"Smooth cinematic motion."
-    )
-    if scene.duration_seconds <= 8:
-        return base
-
-    # Extended tier: structured prompt with timing phases
-    seconds = scene.duration_seconds
-    mid = seconds // 2
-
-    # Split action into phases if the LLM provided a semicolon-separated pair,
-    # otherwise use action for phase 1 and prompt_summary for phase 2.
-    parts = scene.action.split(";", 1)
-    if len(parts) == 2:
-        phase1 = parts[0].strip()
-        phase2 = parts[1].strip()
-    else:
-        phase1 = scene.action
-        phase2 = scene.prompt_summary
-
-    prompt = (
-        f"{plan.style}. "
-        f"Phase 1 (0-{mid}s): {phase1}. "
-        f"Phase 2 ({mid}-{seconds}s): {phase2}. "
-        f"{scene.camera}. {scene.mood}. "
-        f"Smooth cinematic motion throughout. "
-        f"Maintain: {scene.action}. "
-        f"No sudden scene changes. No freeze frames. No unrelated motion."
-    )
-    return prompt
 
 
 @task(name="compose-keyframe", retries=1, retry_delay_seconds=20)
@@ -76,6 +38,7 @@ def compose_keyframe(
     plan: StoryPlan,
     char_map: dict[str, CharacterAsset],
     prev_last_frame_url: str | None,
+    config: PipelineConfig | None = None,
 ) -> KeyframeAsset:
     """Compose a keyframe image for a scene using multi-image editing.
 
@@ -84,12 +47,18 @@ def compose_keyframe(
     """
     from xai_sdk.chat import image, user
 
+    if config is None:
+        config = PipelineConfig()
+
+    max_iters = config.max_keyframe_iters
+    threshold = config.consistency_threshold
+
     logger.info(
         "Keyframe starting: scene=%d, title=%r, max_iters=%d, threshold=%.2f",
         scene.scene_id,
         scene.title,
-        MAX_KEYFRAME_ITERS,
-        CONSISTENCY_THRESHOLD,
+        max_iters,
+        threshold,
     )
 
     client = get_client()
@@ -122,20 +91,29 @@ def compose_keyframe(
             f"{c.name} (reference image {i + 1}), positioned on the {pos}"
         )
 
-    compose_prompt = (
-        f"{plan.style}. "
-        f"Scene: {scene.title} — {scene.prompt_summary} "
-        f"Setting: {scene.setting}. {scene.mood}. "
-        f"{'. '.join(char_lines)}. "
-        f"Action: {scene.action}. "
-        f"Camera: {scene.camera}. "
-        f"Color palette: {plan.color_palette}. "
-        f"Maintain exact character appearances from the reference images."
+    compose_prompt = keyframe_compose_prompt(
+        plan_style=plan.style,
+        scene_title=scene.title,
+        scene_prompt_summary=scene.prompt_summary,
+        scene_setting=scene.setting,
+        scene_mood=scene.mood,
+        scene_action=scene.action,
+        scene_camera=scene.camera,
+        color_palette=plan.color_palette,
+        char_lines=char_lines,
     )
     logger.info("Compose prompt: %s", compose_prompt)
 
     # Video prompt for Step 5 — tier-aware construction
-    video_prompt = build_video_prompt(scene, plan)
+    video_prompt = build_video_prompt(
+        prompt_summary=scene.prompt_summary,
+        camera=scene.camera,
+        action=scene.action,
+        mood=scene.mood,
+        style=plan.style,
+        duration_seconds=scene.duration_seconds,
+    )
+    video_prompt = append_negative_prompt(video_prompt, config.negative_prompt)
     tier = (
         "standard (correction eligible)"
         if scene.duration_seconds <= 8
@@ -144,17 +122,17 @@ def compose_keyframe(
     logger.info("Video prompt [%s]: %s", tier, video_prompt)
 
     best: dict = {"score": 0.0, "url": "", "path": ""}
-    fix_prompt = None
+    fix_text = None
     iteration = 0
 
-    for iteration in range(1, MAX_KEYFRAME_ITERS + 1):
+    for iteration in range(1, max_iters + 1):
         if iteration == 1:
             # 3a: Multi-image composition
             logger.info(
                 "Scene %d iteration %d/%d: initial composition (model=%s)",
                 scene.scene_id,
                 iteration,
-                MAX_KEYFRAME_ITERS,
+                max_iters,
                 MODEL_IMAGE,
             )
             current_prompt = compose_prompt
@@ -165,38 +143,27 @@ def compose_keyframe(
             )
         else:
             # 3c: Targeted single-image edit
+            current_prompt = fix_prompt_from_issues(
+                score.issues, fix_text  # noqa: F821 — score set in prior iteration
+            )
             logger.info(
                 "Scene %d iteration %d/%d: fix edit prompt: %s",
                 scene.scene_id,
                 iteration,
-                MAX_KEYFRAME_ITERS,
-                fix_prompt or "",
+                max_iters,
+                current_prompt,
             )
-            current_prompt = fix_prompt or ""
             sample_kw = dict(model=MODEL_IMAGE, image_url=best["url"])
 
-        img = client.image.sample(prompt=current_prompt, **sample_kw)
-
-        # Moderation soft-fail: reword prompt and retry
-        for _rw in range(MAX_REWORD_ATTEMPTS):
-            if not is_moderated(img.url):
-                break
+        img, current_prompt, still_moderated = generate_with_moderation_retry(
+            client.image.sample, current_prompt, **sample_kw
+        )
+        if still_moderated:
             logger.warning(
-                "Scene %d iteration %d: moderation hit (reword %d/%d)",
-                scene.scene_id,
-                iteration,
-                _rw + 1,
-                MAX_REWORD_ATTEMPTS,
-            )
-            current_prompt = reword_prompt(current_prompt)
-            img = client.image.sample(prompt=current_prompt, **sample_kw)
-        if is_moderated(img.url):
-            logger.warning(
-                "Scene %d iteration %d: still moderated after %d rewords, "
+                "Scene %d iteration %d: still moderated after rewords, "
                 "skipping iteration",
                 scene.scene_id,
                 iteration,
-                MAX_REWORD_ATTEMPTS,
             )
             continue
 
@@ -206,17 +173,13 @@ def compose_keyframe(
         )
 
         # 3b: Vision consistency check
-        vision_prompt = (
-            "Image 1 is a scene. Images 2+ are character references. "
-            "Score how well characters in the scene match their refs. "
-            "If issues, provide a surgical fix prompt."
-        )
+        v_prompt = keyframe_vision_prompt()
         logger.info(
             "Scene %d vision check (model=%s, %d ref images): %s",
             scene.scene_id,
             MODEL_REASONING,
             len(scene_chars[:2]),
-            vision_prompt,
+            v_prompt,
         )
         vision_imgs = [image(img.url)]
         for c in scene_chars[:2]:
@@ -225,7 +188,7 @@ def compose_keyframe(
         chat = client.chat.create(model=MODEL_REASONING)
         chat.append(
             user(
-                vision_prompt,
+                v_prompt,
                 *vision_imgs,
             )
         )
@@ -236,7 +199,7 @@ def compose_keyframe(
             scene.scene_id,
             iteration,
             score.overall_score,
-            CONSISTENCY_THRESHOLD,
+            threshold,
             score.issues if hasattr(score, "issues") and score.issues else "none",
         )
 
@@ -253,26 +216,27 @@ def compose_keyframe(
                 "path": path,
             }
 
-        if score.overall_score >= CONSISTENCY_THRESHOLD:
+        if score.overall_score >= threshold:
             logger.info(
                 "Scene %d passed threshold at iteration %d (score=%.2f >= %.2f)",
                 scene.scene_id,
                 iteration,
                 score.overall_score,
-                CONSISTENCY_THRESHOLD,
+                threshold,
             )
             break
 
-        fix_prompt = score.fix_prompt or (
-            f"Fix ONLY these issues, keep everything else identical: "
-            f"{'; '.join(score.issues)}"
+        fix_text = score.fix_prompt
+        logger.info(
+            "Scene %d fix prompt: %s",
+            scene.scene_id,
+            fix_prompt_from_issues(score.issues, fix_text),
         )
-        logger.info("Scene %d fix prompt: %s", scene.scene_id, fix_prompt)
     else:
         logger.warning(
             "Scene %d exhausted all %d iterations, using best score=%.2f",
             scene.scene_id,
-            MAX_KEYFRAME_ITERS,
+            max_iters,
             best["score"],
         )
 

@@ -7,18 +7,25 @@ import logging
 from prefect import task
 
 from grok_spicy.client import (
-    CONSISTENCY_THRESHOLD,
-    MAX_CHAR_ATTEMPTS,
-    MAX_REWORD_ATTEMPTS,
     MODEL_IMAGE,
     MODEL_REASONING,
     download,
+    generate_with_moderation_retry,
     get_client,
-    is_moderated,
-    reword_prompt,
     to_base64,
 )
-from grok_spicy.schemas import Character, CharacterAsset, ConsistencyScore
+from grok_spicy.prompts import (
+    character_generate_prompt,
+    character_stylize_prompt,
+    character_vision_generate_prompt,
+    character_vision_stylize_prompt,
+)
+from grok_spicy.schemas import (
+    Character,
+    CharacterAsset,
+    ConsistencyScore,
+    PipelineConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +36,7 @@ def generate_character_sheet(
     style: str,
     aspect_ratio: str,
     reference_image_path: str | None = None,
+    config: PipelineConfig | None = None,
 ) -> CharacterAsset:
     """Generate a verified character reference portrait.
 
@@ -40,13 +48,18 @@ def generate_character_sheet(
     """
     from xai_sdk.chat import image, user
 
+    if config is None:
+        config = PipelineConfig()
+
     mode = "stylize" if reference_image_path else "generate"
+    max_attempts = config.max_char_attempts
+    threshold = config.consistency_threshold
     logger.info(
         "Character sheet starting: name=%r, mode=%s, max_attempts=%d, threshold=%.2f",
         character.name,
         mode,
-        MAX_CHAR_ATTEMPTS,
-        CONSISTENCY_THRESHOLD,
+        max_attempts,
+        threshold,
     )
     if reference_image_path:
         logger.debug("Reference image path: %s", reference_image_path)
@@ -55,27 +68,17 @@ def generate_character_sheet(
     best: dict = {"score": 0.0, "url": "", "path": ""}
     attempt = 0
 
-    for attempt in range(1, MAX_CHAR_ATTEMPTS + 1):
+    for attempt in range(1, max_attempts + 1):
         logger.info(
             "Character %r attempt %d/%d (mode=%s)",
             character.name,
             attempt,
-            MAX_CHAR_ATTEMPTS,
+            max_attempts,
             mode,
         )
 
         if reference_image_path:
-            # STYLIZE MODE: edit the reference photo into the art style
-            prompt = (
-                f"{style}. Transform this photo into a full body character "
-                f"portrait while preserving the person's exact facial features, "
-                f"face shape, and likeness. Keep the following appearance details "
-                f"accurate: {character.visual_description}. "
-                f"Standing in a neutral three-quarter pose against a plain "
-                f"light gray background. Professional character design "
-                f"reference sheet style. Sharp details, even studio lighting, "
-                f"no background clutter, no text or labels."
-            )
+            prompt = character_stylize_prompt(style, character.visual_description)
             logger.info("Stylize prompt: %s", prompt)
             ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
             logger.debug("Encoded reference image to base64 data URI")
@@ -85,40 +88,19 @@ def generate_character_sheet(
                 aspect_ratio=aspect_ratio,
             )
         else:
-            # GENERATE MODE: text-to-image from scratch
-            prompt = (
-                f"{style}. Full body character portrait of "
-                f"{character.visual_description}. "
-                f"Standing in a neutral three-quarter pose against a plain "
-                f"light gray background. Professional character design "
-                f"reference sheet style. Sharp details, even studio lighting, "
-                f"no background clutter, no text or labels."
-            )
+            prompt = character_generate_prompt(style, character.visual_description)
             logger.info("Generate prompt: %s", prompt)
             sample_kw = dict(model=MODEL_IMAGE, aspect_ratio=aspect_ratio)
 
-        img = client.image.sample(prompt=prompt, **sample_kw)
-
-        # Moderation soft-fail: reword prompt and retry
-        for _rw in range(MAX_REWORD_ATTEMPTS):
-            if not is_moderated(img.url):
-                break
+        img, prompt, still_moderated = generate_with_moderation_retry(
+            client.image.sample, prompt, **sample_kw
+        )
+        if still_moderated:
             logger.warning(
-                "Character %r attempt %d: moderation hit (reword %d/%d)",
-                character.name,
-                attempt,
-                _rw + 1,
-                MAX_REWORD_ATTEMPTS,
-            )
-            prompt = reword_prompt(prompt)
-            img = client.image.sample(prompt=prompt, **sample_kw)
-        if is_moderated(img.url):
-            logger.warning(
-                "Character %r attempt %d: still moderated after %d rewords, "
+                "Character %r attempt %d: still moderated after rewords, "
                 "skipping attempt",
                 character.name,
                 attempt,
-                MAX_REWORD_ATTEMPTS,
             )
             continue
 
@@ -131,14 +113,8 @@ def generate_character_sheet(
         # Vision verify
         chat = client.chat.create(model=MODEL_REASONING)
         if reference_image_path:
-            # Compare generated portrait against the original reference photo
-            vision_prompt = (
-                f"Score how well the first image (generated portrait) preserves "
-                f"the person's likeness from the second image (reference photo). "
-                f"Be strict on: facial features, face shape, hair color/style, "
-                f"eye color, skin tone, build, distinguishing marks.\n\n"
-                f"Also check these appearance details: "
-                f"{character.visual_description}"
+            vision_prompt = character_vision_stylize_prompt(
+                character.visual_description
             )
             logger.info(
                 "Vision verify (ref comparison, model=%s, character=%r): %s",
@@ -154,11 +130,8 @@ def generate_character_sheet(
                 )
             )
         else:
-            vision_prompt = (
-                f"Score how well this portrait matches the description. "
-                f"Be strict on: hair color/style, eye color, clothing "
-                f"colors and style, build, distinguishing features.\n\n"
-                f"Description: {character.visual_description}"
+            vision_prompt = character_vision_generate_prompt(
+                character.visual_description
             )
             logger.info(
                 "Vision verify (text-only, model=%s, character=%r): %s",
@@ -179,7 +152,7 @@ def generate_character_sheet(
             character.name,
             attempt,
             score.overall_score,
-            CONSISTENCY_THRESHOLD,
+            threshold,
             score.issues if hasattr(score, "issues") and score.issues else "none",
         )
 
@@ -196,20 +169,20 @@ def generate_character_sheet(
                 "path": path,
             }
 
-        if score.overall_score >= CONSISTENCY_THRESHOLD:
+        if score.overall_score >= threshold:
             logger.info(
                 "Character %r passed threshold at attempt %d (score=%.2f >= %.2f)",
                 character.name,
                 attempt,
                 score.overall_score,
-                CONSISTENCY_THRESHOLD,
+                threshold,
             )
             break
     else:
         logger.warning(
             "Character %r exhausted all %d attempts, using best score=%.2f",
             character.name,
-            MAX_CHAR_ATTEMPTS,
+            max_attempts,
             best["score"],
         )
 

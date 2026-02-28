@@ -175,6 +175,40 @@ class CharacterDescription(BaseModel):
     )
 
 
+class PipelineConfig(BaseModel):
+    """User-overridable knobs for generation behaviour."""
+
+    negative_prompt: str | None = None
+    style_override: str | None = None
+    consistency_threshold: float = Field(default=0.80, ge=0.0, le=1.0)
+    max_retries: int | None = Field(default=None, ge=1)
+    max_duration: int = Field(default=15, ge=3, le=15)
+    debug: bool = False
+
+    @property
+    def max_char_attempts(self) -> int:
+        from grok_spicy.client import MAX_CHAR_ATTEMPTS
+
+        return self.max_retries if self.max_retries is not None else MAX_CHAR_ATTEMPTS
+
+    @property
+    def max_keyframe_iters(self) -> int:
+        from grok_spicy.client import MAX_KEYFRAME_ITERS
+
+        return self.max_retries if self.max_retries is not None else MAX_KEYFRAME_ITERS
+
+    @property
+    def max_video_corrections(self) -> int:
+        from grok_spicy.client import MAX_VIDEO_CORRECTIONS
+
+        return (
+            self.max_retries if self.max_retries is not None else MAX_VIDEO_CORRECTIONS
+        )
+
+    def effective_style(self, plan_style: str) -> str:
+        return self.style_override if self.style_override is not None else plan_style
+
+
 class PipelineState(BaseModel):
     plan: StoryPlan
     characters: list[CharacterAsset] = []

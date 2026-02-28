@@ -7,24 +7,27 @@ import logging
 from prefect import task
 
 from grok_spicy.client import (
-    CONSISTENCY_THRESHOLD,
     EXTENDED_RETRY_THRESHOLD,
-    MAX_REWORD_ATTEMPTS,
-    MAX_VIDEO_CORRECTIONS,
     MODEL_REASONING,
     MODEL_VIDEO,
     RESOLUTION,
     download,
     extract_frame,
+    generate_with_moderation_retry,
     get_client,
-    is_moderated,
-    reword_prompt,
     to_base64,
+)
+from grok_spicy.prompts import (
+    append_negative_prompt,
+    extended_retry_prompt,
+    video_fix_prompt,
+    video_vision_prompt,
 )
 from grok_spicy.schemas import (
     CharacterAsset,
     ConsistencyScore,
     KeyframeAsset,
+    PipelineConfig,
     Scene,
     VideoAsset,
 )
@@ -42,12 +45,19 @@ def generate_scene_video(
     keyframe: KeyframeAsset,
     scene: Scene,
     char_map: dict[str, CharacterAsset],
+    config: PipelineConfig | None = None,
 ) -> VideoAsset:
     """Generate a video clip from a keyframe image, with drift correction.
 
     Flow: image→video → extract frames → vision check → correction loop.
     """
     from xai_sdk.chat import image, user
+
+    if config is None:
+        config = PipelineConfig()
+
+    threshold = config.consistency_threshold
+    max_corrections = config.max_video_corrections
 
     correction_eligible = scene.duration_seconds <= 8
     tier = (
@@ -81,24 +91,12 @@ def generate_scene_video(
         aspect_ratio="16:9",
         resolution=RESOLUTION,
     )
-    vid = client.video.generate(prompt=vid_prompt, **vid_kw)
-
-    # Moderation soft-fail: reword prompt and retry
-    for _rw in range(MAX_REWORD_ATTEMPTS):
-        if not is_moderated(vid.url):
-            break
-        logger.warning(
-            "Scene %d: video moderation hit (reword %d/%d)",
-            scene.scene_id,
-            _rw + 1,
-            MAX_REWORD_ATTEMPTS,
-        )
-        vid_prompt = reword_prompt(vid_prompt)
-        vid = client.video.generate(prompt=vid_prompt, **vid_kw)
-    if is_moderated(vid.url):
+    vid, vid_prompt, still_moderated = generate_with_moderation_retry(
+        client.video.generate, vid_prompt, **vid_kw
+    )
+    if still_moderated:
         raise RuntimeError(
-            f"Scene {scene.scene_id}: video still moderated after "
-            f"{MAX_REWORD_ATTEMPTS} rewords"
+            f"Scene {scene.scene_id}: video still moderated after rewords"
         )
 
     video_path = f"output/videos/scene_{scene.scene_id}.mp4"
@@ -121,17 +119,14 @@ def generate_scene_video(
         len(scene_chars),
     )
 
-    vision_prompt = (
-        "Image 1 is a video's last frame. Images 2+ are character "
-        "refs. Has the character drifted? Score consistency."
-    )
+    v_prompt = video_vision_prompt()
 
     def _check_consistency() -> ConsistencyScore:
         logger.info(
             "Scene %d consistency check (model=%s): %s",
             scene.scene_id,
             MODEL_REASONING,
-            vision_prompt,
+            v_prompt,
         )
         chat = client.chat.create(model=MODEL_REASONING)
         imgs = [image(f"data:image/jpeg;base64,{to_base64(last_frame)}")]
@@ -139,7 +134,7 @@ def generate_scene_video(
             imgs.append(image(c.portrait_url))
         chat.append(
             user(
-                vision_prompt,
+                v_prompt,
                 *imgs,
             )
         )
@@ -152,7 +147,7 @@ def generate_scene_video(
         "Scene %d initial consistency: score=%.2f (threshold=%.2f), issues=%s",
         scene.scene_id,
         score.overall_score,
-        CONSISTENCY_THRESHOLD,
+        threshold,
         score.issues if hasattr(score, "issues") and score.issues else "none",
     )
 
@@ -165,52 +160,34 @@ def generate_scene_video(
         )
 
     while (
-        score.overall_score < CONSISTENCY_THRESHOLD
-        and corrections < MAX_VIDEO_CORRECTIONS
+        score.overall_score < threshold
+        and corrections < max_corrections
         and correction_eligible
     ):
         corrections += 1
-        fix = score.fix_prompt or f"Fix: {'; '.join(score.issues)}"
+        fix = video_fix_prompt(score.issues, score.fix_prompt)
         logger.info(
             "Scene %d correction %d/%d: score=%.2f < %.2f, fix prompt: %s",
             scene.scene_id,
             corrections,
-            MAX_VIDEO_CORRECTIONS,
+            max_corrections,
             score.overall_score,
-            CONSISTENCY_THRESHOLD,
+            threshold,
             fix,
         )
 
-        vid = client.video.generate(
-            prompt=fix,
+        vid, fix, still_moderated = generate_with_moderation_retry(
+            client.video.generate,
+            fix,
             model=MODEL_VIDEO,
             video_url=current_url,
         )
-
-        # Moderation soft-fail on correction: reword and retry
-        for _rw in range(MAX_REWORD_ATTEMPTS):
-            if not is_moderated(vid.url):
-                break
+        if still_moderated:
             logger.warning(
-                "Scene %d correction %d: moderation hit (reword %d/%d)",
-                scene.scene_id,
-                corrections,
-                _rw + 1,
-                MAX_REWORD_ATTEMPTS,
-            )
-            fix = reword_prompt(fix)
-            vid = client.video.generate(
-                prompt=fix,
-                model=MODEL_VIDEO,
-                video_url=current_url,
-            )
-        if is_moderated(vid.url):
-            logger.warning(
-                "Scene %d correction %d: still moderated after %d rewords, "
+                "Scene %d correction %d: still moderated after rewords, "
                 "stopping corrections",
                 scene.scene_id,
                 corrections,
-                MAX_REWORD_ATTEMPTS,
             )
             break
 
@@ -235,19 +212,19 @@ def generate_scene_video(
         )
 
     # Log final decision
-    if score.overall_score >= CONSISTENCY_THRESHOLD:
+    if score.overall_score >= threshold:
         logger.info(
             "Scene %d: passed threshold (score=%.2f >= %.2f) after %d corrections",
             scene.scene_id,
             score.overall_score,
-            CONSISTENCY_THRESHOLD,
+            threshold,
             corrections,
         )
-    elif corrections >= MAX_VIDEO_CORRECTIONS:
+    elif corrections >= max_corrections:
         logger.warning(
             "Scene %d: exhausted %d corrections, using best score=%.2f",
             scene.scene_id,
-            MAX_VIDEO_CORRECTIONS,
+            max_corrections,
             score.overall_score,
         )
     elif not correction_eligible:
@@ -265,22 +242,12 @@ def generate_scene_video(
             score.overall_score,
             EXTENDED_RETRY_THRESHOLD,
         )
-        retry_prompt = keyframe.video_prompt
-        if score.issues:
-            retry_prompt += f" Fix: {'; '.join(score.issues)}"
-        vid = client.video.generate(prompt=retry_prompt, **vid_kw)
-        for _rw in range(MAX_REWORD_ATTEMPTS):
-            if not is_moderated(vid.url):
-                break
-            logger.warning(
-                "Scene %d: extended retry moderation hit (reword %d/%d)",
-                scene.scene_id,
-                _rw + 1,
-                MAX_REWORD_ATTEMPTS,
-            )
-            retry_prompt = reword_prompt(retry_prompt)
-            vid = client.video.generate(prompt=retry_prompt, **vid_kw)
-        if not is_moderated(vid.url):
+        retry_prompt = extended_retry_prompt(keyframe.video_prompt, score.issues)
+        retry_prompt = append_negative_prompt(retry_prompt, config.negative_prompt)
+        vid, retry_prompt, still_moderated = generate_with_moderation_retry(
+            client.video.generate, retry_prompt, **vid_kw
+        )
+        if not still_moderated:
             retry_path = f"output/videos/scene_{scene.scene_id}_retry.mp4"
             download(vid.url, retry_path)
             video_path = retry_path

@@ -7,6 +7,7 @@ import logging
 from prefect import task
 
 from grok_spicy.client import MODEL_STRUCTURED, get_client
+from grok_spicy.prompts import ideation_user_message
 from grok_spicy.schemas import StoryPlan
 
 logger = logging.getLogger(__name__)
@@ -84,22 +85,8 @@ def plan_story(
         )
     logger.info("Ideation system prompt: %s", SYSTEM_PROMPT)
 
-    user_message = f"Create a visual story plan for: {concept}"
-
+    user_message = ideation_user_message(concept, ref_descriptions)
     if ref_descriptions:
-        desc_block = "\n".join(
-            f"- {name}: {desc}" for name, desc in ref_descriptions.items()
-        )
-        user_message += (
-            f"\n\nThe following visual descriptions were extracted from the "
-            f"user's reference photos. Copy each one verbatim into the "
-            f"visual_description field for the corresponding character:\n"
-            f"{desc_block}\n\n"
-            f"IMPORTANT: Character appearance is already fully defined above. "
-            f"Your scene descriptions must focus ENTIRELY on narrative events, "
-            f"actions, emotions, and story progression — do NOT describe what "
-            f"characters look like in scene text."
-        )
         logger.debug("Ideation user message with ref descriptions: %s", user_message)
 
     client = get_client()

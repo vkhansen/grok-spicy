@@ -137,6 +137,30 @@ def main():
         "Use 8 to force all scenes into the correction-eligible tier.",
     )
     parser.add_argument(
+        "--negative-prompt",
+        metavar="TEXT",
+        help="Appended as 'Avoid: TEXT' to all video generation prompts",
+    )
+    parser.add_argument(
+        "--style-override",
+        metavar="TEXT",
+        help="Replace the LLM-generated plan.style with this string",
+    )
+    parser.add_argument(
+        "--consistency-threshold",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help="Override vision-check consistency threshold (0.0-1.0, default: 0.80)",
+    )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Override all max retry/iteration counts (characters, keyframes, video)",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Debug mode: only generate 1 scene (faster, cheaper test runs)",
@@ -156,6 +180,42 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
+
+    # Validate --consistency-threshold
+    if args.consistency_threshold is not None and not (
+        0.0 <= args.consistency_threshold <= 1.0
+    ):
+        print(
+            f"Error: --consistency-threshold must be between 0.0 and 1.0, "
+            f"got {args.consistency_threshold}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Validate --max-retries
+    if args.max_retries is not None and args.max_retries < 1:
+        print(
+            f"Error: --max-retries must be >= 1, got {args.max_retries}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Build PipelineConfig from CLI args
+    from grok_spicy.schemas import PipelineConfig
+
+    config_kw: dict = {
+        "max_duration": args.max_duration,
+        "debug": args.debug,
+    }
+    if args.negative_prompt is not None:
+        config_kw["negative_prompt"] = args.negative_prompt
+    if args.style_override is not None:
+        config_kw["style_override"] = args.style_override
+    if args.consistency_threshold is not None:
+        config_kw["consistency_threshold"] = args.consistency_threshold
+    if args.max_retries is not None:
+        config_kw["max_retries"] = args.max_retries
+    config = PipelineConfig(**config_kw)
 
     # Re-configure logging now that we know the verbosity flag
     setup_logging(verbose=args.verbose)
@@ -317,8 +377,7 @@ def main():
                 concept,
                 observer=observer,
                 character_refs=character_refs,
-                debug=args.debug,
-                max_duration=args.max_duration,
+                config=config,
                 script_plan=script_plan,
             )
             print(f"\nDone: {result}")
@@ -346,8 +405,7 @@ def main():
             result = video_pipeline(
                 concept,
                 character_refs=character_refs,
-                debug=args.debug,
-                max_duration=args.max_duration,
+                config=config,
                 script_plan=script_plan,
             )
             print(f"\nDone: {result}")

@@ -8,7 +8,7 @@ import os
 from prefect import flow
 
 from grok_spicy.observer import NullObserver, PipelineObserver
-from grok_spicy.schemas import Character, PipelineState, StoryPlan
+from grok_spicy.schemas import Character, PipelineConfig, PipelineState, StoryPlan
 from grok_spicy.tasks.assembly import assemble_final_video
 from grok_spicy.tasks.characters import generate_character_sheet
 from grok_spicy.tasks.describe_ref import describe_reference_image
@@ -134,14 +134,18 @@ def video_pipeline(
     concept: str,
     observer: PipelineObserver | None = None,
     character_refs: dict[str, str] | None = None,
+    config: PipelineConfig | None = None,
+    script_plan: StoryPlan | None = None,
+    # Deprecated kwargs — kept for backward compat (web.py, tests)
     debug: bool = False,
     max_duration: int = 15,
-    script_plan: StoryPlan | None = None,
 ) -> str:
     """End-to-end video generation pipeline.
 
     Takes a concept string and produces a final assembled video.
     """
+    if config is None:
+        config = PipelineConfig(debug=debug, max_duration=max_duration)
     if observer is None:
         observer = NullObserver()
     if character_refs is None:
@@ -253,8 +257,11 @@ def video_pipeline(
                             len(char.visual_description),
                         )
 
+        # ═══ STYLE OVERRIDE ═══
+        plan.style = config.effective_style(plan.style)
+
         # ═══ DEBUG MODE: trim to 1 scene ═══
-        if debug and len(plan.scenes) > 1:
+        if config.debug and len(plan.scenes) > 1:
             logger.info("DEBUG MODE: trimming scenes from %d to 1", len(plan.scenes))
             print("** DEBUG MODE: using only 1 scene **")
             plan.scenes = plan.scenes[:1]
@@ -269,14 +276,14 @@ def video_pipeline(
 
         # ═══ DURATION CLAMPING ═══
         for scene in plan.scenes:
-            clamped = min(scene.duration_seconds, max_duration)
+            clamped = min(scene.duration_seconds, config.max_duration)
             if clamped != scene.duration_seconds:
                 logger.info(
                     "Clamping scene %d duration: %ds → %ds (max_duration=%d)",
                     scene.scene_id,
                     scene.duration_seconds,
                     clamped,
-                    max_duration,
+                    config.max_duration,
                 )
                 scene.duration_seconds = clamped
 
@@ -289,6 +296,7 @@ def video_pipeline(
                 plan.style,
                 plan.aspect_ratio,
                 reference_image_path=matched_refs.get(c.name),
+                config=config,
             )
             for c in plan.characters
         ]
@@ -319,7 +327,7 @@ def video_pipeline(
                 scene.scene_id,
                 "yes" if prev_url else "none",
             )
-            kf = compose_keyframe(scene, plan, char_map, prev_url)
+            kf = compose_keyframe(scene, plan, char_map, prev_url, config=config)
             keyframes.append(kf)
             prev_url = kf.keyframe_url
             logger.info(
@@ -371,7 +379,7 @@ def video_pipeline(
                 scene.duration_seconds,
                 tier,
             )
-            v = generate_scene_video(kf, scene, char_map)
+            v = generate_scene_video(kf, scene, char_map, config=config)
             videos.append(v)
             logger.info(
                 "STEP 5 result: scene %d — score=%.2f, corrections=%d, path=%s",
