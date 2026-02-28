@@ -24,7 +24,7 @@ def _save_state(state: PipelineState) -> None:
     """Persist pipeline state to output/state.json."""
     os.makedirs("output", exist_ok=True)
     path = "output/state.json"
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(state.model_dump_json(indent=2))
     logger.debug("Pipeline state saved to %s", path)
 

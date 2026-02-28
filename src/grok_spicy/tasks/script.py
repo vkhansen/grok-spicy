@@ -77,7 +77,7 @@ def compile_script(
 
     path = "output/script.md"
     os.makedirs("output", exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
     logger.info("Script written to %s (%d lines)", path, len(lines))
