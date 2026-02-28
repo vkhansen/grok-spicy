@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 from typing import Any
@@ -21,6 +22,8 @@ from grok_spicy.db import (
 )
 from grok_spicy.events import Event, EventBus
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Grok Spicy Dashboard")
 
 # ─── Globals shared with CLI bootstrap ────────────────────────
@@ -33,6 +36,7 @@ def get_db():
     """Get or create the shared DB connection."""
     global _conn
     if _conn is None:
+        logger.info("Auto-initialising DB connection (was None)")
         _conn = init_db()
     return _conn
 
@@ -41,6 +45,7 @@ def set_db(conn):
     """Allow CLI to inject a pre-initialized connection."""
     global _conn
     _conn = conn
+    logger.debug("DB connection injected via set_db()")
 
 
 # ─── Templates ────────────────────────────────────────────────
@@ -70,11 +75,13 @@ async def health():
 @app.get("/", response_class=HTMLResponse)
 async def index():
     runs = list_runs(get_db())
+    logger.debug("Index page: %d runs", len(runs))
     return templates.get_template("index.html").render(runs=runs)
 
 
 @app.get("/new", response_class=HTMLResponse)
 async def new_run_form():
+    logger.debug("Serving new run form")
     return templates.get_template("new_run.html").render()
 
 
@@ -82,7 +89,9 @@ async def new_run_form():
 async def run_detail(run_id: int):
     run = get_run(get_db(), run_id)
     if not run:
+        logger.warning("Run detail: run_id=%d not found", run_id)
         return HTMLResponse("<h1>Run not found</h1>", status_code=404)
+    logger.debug("Run detail: run_id=%d, status=%s", run_id, run.get("status"))
     return templates.get_template("run.html").render(run=run)
 
 
@@ -113,6 +122,7 @@ async def create_run(
     ref_name_2: str = Form(""),
     ref_image_2: UploadFile | None = _FILE_NONE,
 ):
+    logger.info("Create run: concept=%r", concept[:120])
     conn = get_db()
     run_id = insert_run(conn, concept)
 
@@ -129,8 +139,16 @@ async def create_run(
                 f.write(content)
             insert_reference_image(conn, run_id, name, upload.filename, path)
             ref_map[name] = path
+            logger.info(
+                "Saved reference image: run=%d, name=%r, file=%r, size=%d bytes",
+                run_id,
+                name,
+                upload.filename,
+                len(content),
+            )
 
     # Start pipeline in background thread
+    logger.info("Launching pipeline thread: run_id=%d, refs=%d", run_id, len(ref_map))
     _start_pipeline_thread(concept, run_id, ref_map)
 
     return RedirectResponse(f"/run/{run_id}", status_code=303)
@@ -153,6 +171,7 @@ def _start_pipeline_thread(
         event_bus.publish(
             Event(type="run_start", run_id=run_id, data={"concept": concept})
         )
+        logger.debug("Patched run_start fired for run_id=%d", run_id)
         return run_id
 
     observer.on_run_start = _patched_run_start  # type: ignore[assignment]
@@ -160,8 +179,10 @@ def _start_pipeline_thread(
     def _run():
         from grok_spicy.pipeline import video_pipeline
 
+        logger.info("Pipeline thread started for run_id=%d", run_id)
         character_refs = ref_map if ref_map else None
         video_pipeline(concept, observer=observer, character_refs=character_refs)
+        logger.info("Pipeline thread finished for run_id=%d", run_id)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -172,6 +193,7 @@ def _start_pipeline_thread(
 
 @app.get("/sse/{run_id}")
 async def sse_stream(run_id: int):
+    logger.info("SSE stream opened for run_id=%d", run_id)
     queue = event_bus.subscribe()
 
     async def generate():
@@ -179,8 +201,14 @@ async def sse_stream(run_id: int):
             while True:
                 event = await queue.get()
                 if event.run_id == run_id:
+                    logger.debug("SSE sending: run=%d, type=%s", run_id, event.type)
                     yield f"event: {event.type}\ndata: {json.dumps(event.data)}\n\n"
                     if event.type in ("complete", "error"):
+                        logger.info(
+                            "SSE stream closing for run_id=%d (type=%s)",
+                            run_id,
+                            event.type,
+                        )
                         break
         finally:
             event_bus.unsubscribe(queue)

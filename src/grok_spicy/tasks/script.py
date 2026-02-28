@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from prefect import task
 
 from grok_spicy.schemas import CharacterAsset, KeyframeAsset, StoryPlan
+
+logger = logging.getLogger(__name__)
 
 
 @task(name="compile-script")
@@ -19,6 +22,13 @@ def compile_script(
 
     No API calls — pure Python. Returns the script file path.
     """
+    logger.info(
+        "Script compilation starting: title=%r, %d characters, %d keyframes",
+        plan.title,
+        len(characters),
+        len(keyframes),
+    )
+
     lines = [
         f"# {plan.title}\n",
         f"**Style:** {plan.style}  ",
@@ -36,6 +46,9 @@ def compile_script(
             f"> {c.visual_description}\n",
             f"![{c.name}]({c.portrait_path})\n",
         ]
+        logger.debug(
+            "Script: added character %r (score=%.2f)", c.name, c.consistency_score
+        )
 
     lines += ["---\n", "## Scenes\n"]
 
@@ -55,9 +68,17 @@ def compile_script(
             "**Video Prompt:**",
             f"> {kf.video_prompt}\n",
         ]
+        logger.debug(
+            "Script: added scene %d — %r (score=%.2f)",
+            sc.scene_id,
+            sc.title,
+            kf.consistency_score,
+        )
 
     path = "output/script.md"
     os.makedirs("output", exist_ok=True)
     with open(path, "w") as f:
         f.write("\n".join(lines))
+
+    logger.info("Script written to %s (%d lines)", path, len(lines))
     return path

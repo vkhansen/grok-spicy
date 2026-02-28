@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -9,6 +10,8 @@ import subprocess
 from prefect import task
 
 from grok_spicy.schemas import VideoAsset
+
+logger = logging.getLogger(__name__)
 
 
 @task(name="assemble-video")
@@ -18,19 +21,32 @@ def assemble_final_video(videos: list[VideoAsset]) -> str:
     os.makedirs("output", exist_ok=True)
     final = "output/final_video.mp4"
 
+    logger.info("Assembly starting: %d video clip(s)", len(sorted_vids))
+    for v in sorted_vids:
+        logger.debug(
+            "  clip: scene=%d, path=%s, duration=%.1fs",
+            v.scene_id,
+            v.video_path,
+            v.duration,
+        )
+
     if not shutil.which("ffmpeg"):
+        logger.error("FFmpeg not found on PATH — cannot assemble")
         raise FileNotFoundError(
             "FFmpeg not found on PATH. Install it: https://ffmpeg.org/download.html"
         )
 
     if len(sorted_vids) == 1:
+        logger.info("Single clip — copying directly to %s", final)
         shutil.copy2(sorted_vids[0].video_path, final)
         return final
 
     # Normalize each clip
+    logger.info("Normalizing %d clips (fps=24, 1280x720, libx264)", len(sorted_vids))
     norm_paths = []
     for v in sorted_vids:
         norm = v.video_path.replace(".mp4", "_norm.mp4")
+        logger.debug("Normalizing scene %d: %s → %s", v.scene_id, v.video_path, norm)
         subprocess.run(
             [
                 "ffmpeg",
@@ -53,6 +69,7 @@ def assemble_final_video(videos: list[VideoAsset]) -> str:
             capture_output=True,
             check=True,
         )
+        logger.debug("Normalized scene %d → %s", v.scene_id, norm)
         norm_paths.append(norm)
 
     # Write concat file
@@ -60,8 +77,12 @@ def assemble_final_video(videos: list[VideoAsset]) -> str:
     with open(concat_file, "w") as f:
         for p in norm_paths:
             f.write(f"file '{os.path.abspath(p)}'\n")
+    logger.debug(
+        "Concat list written to %s with %d entries", concat_file, len(norm_paths)
+    )
 
     # Concatenate
+    logger.info("Concatenating %d normalized clips → %s", len(norm_paths), final)
     subprocess.run(
         [
             "ffmpeg",
@@ -87,4 +108,5 @@ def assemble_final_video(videos: list[VideoAsset]) -> str:
         capture_output=True,
         check=True,
     )
+    logger.info("Assembly complete → %s", final)
     return final

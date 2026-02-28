@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import threading
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,15 +33,24 @@ class EventBus:
         q: asyncio.Queue[Event] = asyncio.Queue()
         with self._lock:
             self._subscribers.append(q)
+        logger.debug("EventBus: new subscriber (total=%d)", len(self._subscribers))
         return q
 
     def unsubscribe(self, q: asyncio.Queue[Event]) -> None:
         """Remove a subscriber queue."""
         with self._lock, contextlib.suppress(ValueError):
             self._subscribers.remove(q)
+        logger.debug("EventBus: unsubscribed (total=%d)", len(self._subscribers))
 
     def publish(self, event: Event) -> None:
         """Push event to all subscribers (called from sync pipeline thread)."""
         with self._lock:
+            count = len(self._subscribers)
             for q in self._subscribers:
                 q.put_nowait(event)
+        logger.debug(
+            "EventBus: published type=%s, run_id=%d to %d subscriber(s)",
+            event.type,
+            event.run_id,
+            count,
+        )

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from grok_spicy.schemas import (
@@ -112,12 +115,14 @@ def init_db(db_path: str = _DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Create tables if they don't exist and enable WAL mode."""
     import os
 
+    logger.info("Initialising database at %s", db_path)
     os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(_SCHEMA)
     conn.commit()
+    logger.debug("Database initialised (WAL mode, 7 tables)")
     return conn
 
 
@@ -131,7 +136,9 @@ def insert_run(conn: sqlite3.Connection, concept: str) -> int:
         (concept, _now()),
     )
     conn.commit()
-    return cur.lastrowid  # type: ignore[return-value]
+    run_id = cur.lastrowid
+    logger.info("Inserted run id=%d, concept=%r", run_id, concept[:80])
+    return run_id  # type: ignore[return-value]
 
 
 def update_run(conn: sqlite3.Connection, run_id: int, **fields: object) -> None:
@@ -155,6 +162,7 @@ def update_run(conn: sqlite3.Connection, run_id: int, **fields: object) -> None:
     vals = [fields[c] for c in cols]
     conn.execute(f"UPDATE runs SET {set_clause} WHERE id = ?", vals + [run_id])
     conn.commit()
+    logger.debug("Updated run %d: %s", run_id, {c: fields[c] for c in cols})
 
 
 # ─── Story plan children ─────────────────────────────────────
@@ -230,6 +238,13 @@ def insert_reference_image(
         (run_id, char_name, filename, path, _now()),
     )
     conn.commit()
+    logger.debug(
+        "Inserted reference image: run=%d, char=%r, file=%r, path=%s",
+        run_id,
+        char_name,
+        filename,
+        path,
+    )
 
 
 def get_reference_images(
@@ -272,6 +287,12 @@ def upsert_character_asset(
         ),
     )
     conn.commit()
+    logger.debug(
+        "Upserted character asset: run=%d, name=%r, score=%.2f",
+        run_id,
+        asset.name,
+        asset.consistency_score,
+    )
 
 
 def upsert_keyframe_asset(
@@ -300,6 +321,12 @@ def upsert_keyframe_asset(
         ),
     )
     conn.commit()
+    logger.debug(
+        "Upserted keyframe asset: run=%d, scene=%d, score=%.2f",
+        run_id,
+        asset.scene_id,
+        asset.consistency_score,
+    )
 
 
 def upsert_video_asset(
@@ -330,6 +357,13 @@ def upsert_video_asset(
         ),
     )
     conn.commit()
+    logger.debug(
+        "Upserted video asset: run=%d, scene=%d, score=%.2f, corrections=%d",
+        run_id,
+        asset.scene_id,
+        asset.consistency_score,
+        asset.correction_passes,
+    )
 
 
 # ─── Queries ──────────────────────────────────────────────────

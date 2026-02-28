@@ -302,10 +302,14 @@ def video_pipeline(
 
         _notify(observer, "on_complete", run_id, final)
 
-        logger.info("Pipeline finished successfully — run_id=%d, output=%s", run_id, final)
+        logger.info(
+            "Pipeline finished successfully — run_id=%d, output=%s", run_id, final
+        )
         return final
 
     except Exception as exc:
-        logger.error("Pipeline failed — run_id=%d, error=%s", run_id, exc, exc_info=True)
+        logger.error(
+            "Pipeline failed — run_id=%d, error=%s", run_id, exc, exc_info=True
+        )
         _notify(observer, "on_error", run_id, str(exc))
         raise

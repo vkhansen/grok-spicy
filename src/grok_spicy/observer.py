@@ -97,12 +97,16 @@ class WebObserver:
     def __init__(self, conn: sqlite3.Connection, bus: EventBus) -> None:
         self._conn = conn
         self._bus = bus
+        logger.debug("WebObserver created")
 
     def on_run_start(self, concept: str) -> int:
         run_id = insert_run(self._conn, concept)
         update_run(self._conn, run_id, status="ideation")
         self._bus.publish(
             Event(type="run_start", run_id=run_id, data={"concept": concept})
+        )
+        logger.info(
+            "WebObserver: run started — run_id=%d, concept=%r", run_id, concept[:80]
         )
         return run_id
 
@@ -126,6 +130,13 @@ class WebObserver:
                     data={"title": plan.title, "style": plan.style},
                 )
             )
+            logger.info(
+                "WebObserver: plan saved — run=%d, title=%r, chars=%d, scenes=%d",
+                run_id,
+                plan.title,
+                len(plan.characters),
+                len(plan.scenes),
+            )
         except Exception:
             logger.warning("WebObserver.on_plan failed", exc_info=True)
 
@@ -142,6 +153,12 @@ class WebObserver:
                         "consistency_score": asset.consistency_score,
                     },
                 )
+            )
+            logger.info(
+                "WebObserver: character saved — run=%d, name=%r, score=%.2f",
+                run_id,
+                asset.name,
+                asset.consistency_score,
             )
         except Exception:
             logger.warning("WebObserver.on_character failed", exc_info=True)
@@ -161,6 +178,12 @@ class WebObserver:
                     },
                 )
             )
+            logger.info(
+                "WebObserver: keyframe saved — run=%d, scene=%d, score=%.2f",
+                run_id,
+                asset.scene_id,
+                asset.consistency_score,
+            )
         except Exception:
             logger.warning("WebObserver.on_keyframe failed", exc_info=True)
 
@@ -173,6 +196,9 @@ class WebObserver:
                     run_id=run_id,
                     data={"script_path": script_path},
                 )
+            )
+            logger.info(
+                "WebObserver: script saved — run=%d, path=%s", run_id, script_path
             )
         except Exception:
             logger.warning("WebObserver.on_script failed", exc_info=True)
@@ -190,6 +216,12 @@ class WebObserver:
                         "consistency_score": asset.consistency_score,
                     },
                 )
+            )
+            logger.info(
+                "WebObserver: video saved — run=%d, scene=%d, score=%.2f",
+                run_id,
+                asset.scene_id,
+                asset.consistency_score,
             )
         except Exception:
             logger.warning("WebObserver.on_video failed", exc_info=True)
@@ -212,6 +244,9 @@ class WebObserver:
                     data={"final_video_path": final_path},
                 )
             )
+            logger.info(
+                "WebObserver: run complete — run=%d, video=%s", run_id, final_path
+            )
         except Exception:
             logger.warning("WebObserver.on_complete failed", exc_info=True)
 
@@ -226,5 +261,6 @@ class WebObserver:
                 completed_at=_now(),
             )
             self._bus.publish(Event(type="error", run_id=run_id, data={"error": error}))
+            logger.error("WebObserver: run failed — run=%d, error=%s", run_id, error)
         except Exception:
             logger.warning("WebObserver.on_error failed", exc_info=True)

@@ -105,9 +105,7 @@ def extract_frame(video_path: str, output_path: str, position: str = "first") ->
         )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    logger.debug(
-        "Extracting %s frame: %s → %s", position, video_path, output_path
-    )
+    logger.debug("Extracting %s frame: %s → %s", position, video_path, output_path)
 
     if position == "first":
         cmd = [
