@@ -44,6 +44,8 @@ def setup_logging(log_dir: str = "output", verbose: bool = False) -> None:
 
     root = logging.getLogger("grok_spicy")
     root.setLevel(logging.DEBUG)
+    # Prevent duplicate handlers when setup_logging is called multiple times
+    root.handlers.clear()
     root.addHandler(fh)
     root.addHandler(ch)
 
