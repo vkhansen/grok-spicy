@@ -13,11 +13,15 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 
-def setup_logging(log_dir: str = "output") -> None:
+def setup_logging(log_dir: str = "output", verbose: bool = False) -> None:
     """Configure logging with file and console handlers.
 
-    - File handler: DEBUG level → ``{log_dir}/grok_spicy.log``
-    - Console handler: INFO level → stderr
+    - File handler: DEBUG level → ``{log_dir}/grok_spicy.log`` (always)
+    - Console handler: DEBUG level (if *verbose*) or INFO level → stderr
+
+    Args:
+        log_dir: Directory for the log file.
+        verbose: When True, console output includes DEBUG messages.
     """
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "grok_spicy.log")
@@ -32,9 +36,10 @@ def setup_logging(log_dir: str = "output") -> None:
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(fmt)
 
-    # Console handler — user-visible messages (INFO+)
+    # Console handler — DEBUG when verbose, otherwise INFO
+    console_level = logging.DEBUG if verbose else logging.INFO
     ch = logging.StreamHandler(sys.stderr)
-    ch.setLevel(logging.INFO)
+    ch.setLevel(console_level)
     ch.setFormatter(fmt)
 
     root = logging.getLogger("grok_spicy")
@@ -43,7 +48,9 @@ def setup_logging(log_dir: str = "output") -> None:
     root.addHandler(ch)
 
     logging.getLogger("grok_spicy").info(
-        "Logging initialised — file=%s (DEBUG), console (INFO)", log_path
+        "Logging initialised — file=%s (DEBUG), console (%s)",
+        log_path,
+        logging.getLevelName(console_level),
     )
 
 
@@ -67,7 +74,6 @@ def _parse_refs(raw_refs: list[str]) -> dict[str, str]:
 
 def main():
     load_dotenv()
-    setup_logging()
 
     parser = argparse.ArgumentParser(
         prog="grok-spicy",
@@ -103,7 +109,16 @@ def main():
         metavar="NAME=PATH",
         help="Character reference image: NAME=PATH (repeatable)",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose (DEBUG) logging on the console",
+    )
     args = parser.parse_args()
+
+    # Re-configure logging now that we know the verbosity flag
+    setup_logging(verbose=args.verbose)
 
     # ─── --web mode: server only, no pipeline ─────────────────
     if args.web:

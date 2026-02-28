@@ -13,6 +13,7 @@ from grok_spicy.client import (
     MODEL_REASONING,
     download,
     get_client,
+    to_base64,
 )
 from grok_spicy.schemas import Character, CharacterAsset, ConsistencyScore
 
@@ -72,10 +73,12 @@ def generate_character_sheet(
                 f"no background clutter, no text or labels."
             )
             logger.debug("Stylize prompt (len=%d): %s", len(prompt), prompt[:200])
+            ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
+            logger.debug("Encoded reference image to base64 data URI")
             img = client.image.sample(
                 prompt=prompt,
                 model=MODEL_IMAGE,
-                image_url=reference_image_path,
+                image_url=ref_b64,
                 aspect_ratio=aspect_ratio,
             )
         else:
