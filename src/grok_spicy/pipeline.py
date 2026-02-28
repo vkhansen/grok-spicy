@@ -8,7 +8,7 @@ import os
 from prefect import flow
 
 from grok_spicy.observer import NullObserver, PipelineObserver
-from grok_spicy.schemas import Character, PipelineState
+from grok_spicy.schemas import Character, PipelineState, StoryPlan
 from grok_spicy.tasks.assembly import assemble_final_video
 from grok_spicy.tasks.characters import generate_character_sheet
 from grok_spicy.tasks.describe_ref import describe_reference_image
@@ -135,6 +135,8 @@ def video_pipeline(
     observer: PipelineObserver | None = None,
     character_refs: dict[str, str] | None = None,
     debug: bool = False,
+    max_duration: int = 15,
+    script_plan: StoryPlan | None = None,
 ) -> str:
     """End-to-end video generation pipeline.
 
@@ -151,92 +153,105 @@ def video_pipeline(
     logger.info("Run ID assigned: %d", run_id)
 
     try:
-        # ═══ PRE-IDEATION: ANALYZE REFERENCE IMAGES ═══
-        ref_descriptions: dict[str, str] | None = None
-        if character_refs:
-            logger.info(
-                "Pre-ideation: analyzing %d reference images", len(character_refs)
+        if script_plan is not None:
+            # ═══ SCRIPT MODE: skip ideation, use pre-built plan ═══
+            logger.info("SCRIPT MODE: using pre-built plan, skipping ideation")
+            print("=== SCRIPT MODE: Using provided plan (ideation skipped) ===")
+            plan = script_plan
+            matched_refs: dict[str, str] = {}
+            print(
+                f"-> {plan.title}: {len(plan.characters)} chars, "
+                f"{len(plan.scenes)} scenes"
             )
-            print("=== Pre-ideation: Analyzing reference images ===")
-            desc_futures = [
-                describe_reference_image.submit(name, path)
-                for name, path in character_refs.items()
-            ]
-            ref_descriptions = {}
-            for fut in desc_futures:
-                desc = fut.result()
-                ref_descriptions[desc.name] = desc.visual_description
+            _notify(observer, "on_plan", run_id, plan)
+        else:
+            # ═══ PRE-IDEATION: ANALYZE REFERENCE IMAGES ═══
+            ref_descriptions: dict[str, str] | None = None
+            if character_refs:
                 logger.info(
-                    "Reference described: %s (%d words)",
-                    desc.name,
-                    len(desc.visual_description.split()),
+                    "Pre-ideation: analyzing %d reference images",
+                    len(character_refs),
                 )
-                print(f"  {desc.name}: description extracted")
-
-        # ═══ STEP 1: IDEATION ═══
-        logger.info("STEP 1: Ideation — generating story plan")
-        print("=== STEP 1: Planning story ===")
-        plan = plan_story(concept, ref_descriptions=ref_descriptions)
-        logger.info(
-            "STEP 1 complete: title=%r, characters=%d, scenes=%d, "
-            "style=%r, aspect=%s",
-            plan.title,
-            len(plan.characters),
-            len(plan.scenes),
-            plan.style,
-            plan.aspect_ratio,
-        )
-        for c in plan.characters:
-            logger.debug(
-                "Character planned: name=%r, role=%r, visual_desc_len=%d",
-                c.name,
-                c.role,
-                len(c.visual_description),
-            )
-        for s in plan.scenes:
-            logger.debug(
-                "Scene planned: id=%d, title=%r, chars=%s, duration=%ds",
-                s.scene_id,
-                s.title,
-                s.characters_present,
-                s.duration_seconds,
-            )
-        print(
-            f"-> {plan.title}: {len(plan.characters)} chars, "
-            f"{len(plan.scenes)} scenes"
-        )
-        _notify(observer, "on_plan", run_id, plan)
-
-        # Match uploaded reference names to generated character names
-        matched_refs = _match_character_refs(character_refs, plan.characters)
-        if matched_refs:
-            print(f"  Ref images matched: {list(matched_refs.keys())}")
-
-        # Override visual descriptions with ref-extracted ones (bulletproof —
-        # the LLM may have ignored the VERBATIM instruction and padded them).
-        # ref_descriptions is keyed by ref labels (e.g. "women1") but
-        # characters are named by the LLM (e.g. "Woman1"). Use matched_refs
-        # (char_name → file_path) + character_refs (ref_label → file_path)
-        # to bridge the gap.
-        if ref_descriptions and matched_refs:
-            # Build reverse map: file_path → ref_label
-            path_to_label = {path: label for label, path in character_refs.items()}
-            for char in plan.characters:
-                if char.name not in matched_refs:
-                    continue
-                # matched_refs[char.name] is the file path for this character
-                ref_label = path_to_label.get(matched_refs[char.name])
-                if ref_label and ref_label in ref_descriptions:
-                    old_len = len(char.visual_description)
-                    char.visual_description = ref_descriptions[ref_label]
+                print("=== Pre-ideation: Analyzing reference images ===")
+                desc_futures = [
+                    describe_reference_image.submit(name, path)
+                    for name, path in character_refs.items()
+                ]
+                ref_descriptions = {}
+                for fut in desc_futures:
+                    desc = fut.result()
+                    ref_descriptions[desc.name] = desc.visual_description
                     logger.info(
-                        "Overrode visual_description for %r (via ref label %r): "
-                        "%d chars → %d chars (from ref photo)",
-                        char.name,
-                        ref_label,
-                        old_len,
-                        len(char.visual_description),
+                        "Reference described: %s (%d words)",
+                        desc.name,
+                        len(desc.visual_description.split()),
                     )
+                    print(f"  {desc.name}: description extracted")
+
+            # ═══ STEP 1: IDEATION ═══
+            logger.info("STEP 1: Ideation — generating story plan")
+            print("=== STEP 1: Planning story ===")
+            plan = plan_story(concept, ref_descriptions=ref_descriptions)
+            logger.info(
+                "STEP 1 complete: title=%r, characters=%d, scenes=%d, "
+                "style=%r, aspect=%s",
+                plan.title,
+                len(plan.characters),
+                len(plan.scenes),
+                plan.style,
+                plan.aspect_ratio,
+            )
+            for c in plan.characters:
+                logger.debug(
+                    "Character planned: name=%r, role=%r, visual_desc_len=%d",
+                    c.name,
+                    c.role,
+                    len(c.visual_description),
+                )
+            for s in plan.scenes:
+                logger.debug(
+                    "Scene planned: id=%d, title=%r, chars=%s, duration=%ds",
+                    s.scene_id,
+                    s.title,
+                    s.characters_present,
+                    s.duration_seconds,
+                )
+            print(
+                f"-> {plan.title}: {len(plan.characters)} chars, "
+                f"{len(plan.scenes)} scenes"
+            )
+            _notify(observer, "on_plan", run_id, plan)
+
+            # Match uploaded reference names to generated character names
+            matched_refs = _match_character_refs(character_refs, plan.characters)
+            if matched_refs:
+                print(f"  Ref images matched: {list(matched_refs.keys())}")
+
+            # Override visual descriptions with ref-extracted ones (bulletproof —
+            # the LLM may have ignored the VERBATIM instruction and padded them).
+            # ref_descriptions is keyed by ref labels (e.g. "women1") but
+            # characters are named by the LLM (e.g. "Woman1"). Use matched_refs
+            # (char_name → file_path) + character_refs (ref_label → file_path)
+            # to bridge the gap.
+            if ref_descriptions and matched_refs:
+                # Build reverse map: file_path → ref_label
+                path_to_label = {path: label for label, path in character_refs.items()}
+                for char in plan.characters:
+                    if char.name not in matched_refs:
+                        continue
+                    # matched_refs[char.name] is the file path for this character
+                    ref_label = path_to_label.get(matched_refs[char.name])
+                    if ref_label and ref_label in ref_descriptions:
+                        old_len = len(char.visual_description)
+                        char.visual_description = ref_descriptions[ref_label]
+                        logger.info(
+                            "Overrode visual_description for %r (via ref label %r): "
+                            "%d chars → %d chars (from ref photo)",
+                            char.name,
+                            ref_label,
+                            old_len,
+                            len(char.visual_description),
+                        )
 
         # ═══ DEBUG MODE: trim to 1 scene ═══
         if debug and len(plan.scenes) > 1:
@@ -251,6 +266,19 @@ def video_pipeline(
                 len(plan.characters),
                 [c.name for c in plan.characters],
             )
+
+        # ═══ DURATION CLAMPING ═══
+        for scene in plan.scenes:
+            clamped = min(scene.duration_seconds, max_duration)
+            if clamped != scene.duration_seconds:
+                logger.info(
+                    "Clamping scene %d duration: %ds → %ds (max_duration=%d)",
+                    scene.scene_id,
+                    scene.duration_seconds,
+                    clamped,
+                    max_duration,
+                )
+                scene.duration_seconds = clamped
 
         # ═══ STEP 2: CHARACTER SHEETS (parallel) ═══
         logger.info("STEP 2: Character sheets — generating %d", len(plan.characters))
@@ -324,10 +352,24 @@ def video_pipeline(
         print("=== STEP 5: Videos ===")
         videos = []
         for scene, kf in zip(plan.scenes, keyframes, strict=True):
+            tier = (
+                "standard (correction eligible)"
+                if scene.duration_seconds <= 8
+                else "extended (no correction)"
+            )
             logger.debug(
-                "Generating video for scene %d, duration=%ds",
+                "Generating video for scene %d, duration=%ds, tier=%s",
                 scene.scene_id,
                 scene.duration_seconds,
+                tier,
+            )
+            _notify(
+                observer,
+                "on_video_start",
+                run_id,
+                scene.scene_id,
+                scene.duration_seconds,
+                tier,
             )
             v = generate_scene_video(kf, scene, char_map)
             videos.append(v)

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # ─── Constants ────────────────────────────────────────────────
 
 CONSISTENCY_THRESHOLD = 0.80
+EXTENDED_RETRY_THRESHOLD = 0.50
 MAX_CHAR_ATTEMPTS = 3
 MAX_KEYFRAME_ITERS = 3
 MAX_VIDEO_CORRECTIONS = 2

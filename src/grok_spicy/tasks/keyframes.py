@@ -28,6 +28,48 @@ from grok_spicy.schemas import (
 logger = logging.getLogger(__name__)
 
 
+def build_video_prompt(scene: Scene, plan: StoryPlan) -> str:
+    """Build a video motion prompt, with stronger constraints for extended scenes.
+
+    Standard tier (<=8s): concise prompt — the correction loop compensates for drift.
+    Extended tier (>8s): sequenced timing, key-phrase repetition, and negative
+    constraints to compensate for the absence of drift correction.
+    """
+    base = (
+        f"{scene.prompt_summary} "
+        f"{scene.camera}. {scene.action}. "
+        f"{scene.mood}. {plan.style}. "
+        f"Smooth cinematic motion."
+    )
+    if scene.duration_seconds <= 8:
+        return base
+
+    # Extended tier: structured prompt with timing phases
+    seconds = scene.duration_seconds
+    mid = seconds // 2
+
+    # Split action into phases if the LLM provided a semicolon-separated pair,
+    # otherwise use action for phase 1 and prompt_summary for phase 2.
+    parts = scene.action.split(";", 1)
+    if len(parts) == 2:
+        phase1 = parts[0].strip()
+        phase2 = parts[1].strip()
+    else:
+        phase1 = scene.action
+        phase2 = scene.prompt_summary
+
+    prompt = (
+        f"{plan.style}. "
+        f"Phase 1 (0-{mid}s): {phase1}. "
+        f"Phase 2 ({mid}-{seconds}s): {phase2}. "
+        f"{scene.camera}. {scene.mood}. "
+        f"Smooth cinematic motion throughout. "
+        f"Maintain: {scene.action}. "
+        f"No sudden scene changes. No freeze frames. No unrelated motion."
+    )
+    return prompt
+
+
 @task(name="compose-keyframe", retries=1, retry_delay_seconds=20)
 def compose_keyframe(
     scene: Scene,
@@ -92,14 +134,14 @@ def compose_keyframe(
     )
     logger.info("Compose prompt: %s", compose_prompt)
 
-    # Video prompt for Step 5 — scene context + motion
-    video_prompt = (
-        f"{scene.prompt_summary} "
-        f"{scene.camera}. {scene.action}. "
-        f"{scene.mood}. {plan.style}. "
-        f"Smooth cinematic motion."
+    # Video prompt for Step 5 — tier-aware construction
+    video_prompt = build_video_prompt(scene, plan)
+    tier = (
+        "standard (correction eligible)"
+        if scene.duration_seconds <= 8
+        else "extended (no correction)"
     )
-    logger.info("Video prompt: %s", video_prompt)
+    logger.info("Video prompt [%s]: %s", tier, video_prompt)
 
     best: dict = {"score": 0.0, "url": "", "path": ""}
     fix_prompt = None

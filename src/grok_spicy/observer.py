@@ -50,6 +50,12 @@ class PipelineObserver(Protocol):
         """Called after Step 4 script compilation."""
         ...
 
+    def on_video_start(
+        self, run_id: int, scene_id: int, duration: int, tier: str
+    ) -> None:
+        """Called before video generation begins for a scene."""
+        ...
+
     def on_video(self, run_id: int, asset: VideoAsset) -> None:
         """Called after each scene video is generated."""
         ...
@@ -79,6 +85,11 @@ class NullObserver:
         pass
 
     def on_script(self, run_id: int, script_path: str) -> None:
+        pass
+
+    def on_video_start(
+        self, run_id: int, scene_id: int, duration: int, tier: str
+    ) -> None:
         pass
 
     def on_video(self, run_id: int, asset: VideoAsset) -> None:
@@ -202,6 +213,31 @@ class WebObserver:
             )
         except Exception:
             logger.warning("WebObserver.on_script failed", exc_info=True)
+
+    def on_video_start(
+        self, run_id: int, scene_id: int, duration: int, tier: str
+    ) -> None:
+        try:
+            self._bus.publish(
+                Event(
+                    type="video_start",
+                    run_id=run_id,
+                    data={
+                        "scene_id": scene_id,
+                        "duration": duration,
+                        "tier": tier,
+                    },
+                )
+            )
+            logger.info(
+                "WebObserver: video_start — run=%d, scene=%d, duration=%ds, tier=%s",
+                run_id,
+                scene_id,
+                duration,
+                tier,
+            )
+        except Exception:
+            logger.warning("WebObserver.on_video_start failed", exc_info=True)
 
     def on_video(self, run_id: int, asset: VideoAsset) -> None:
         try:

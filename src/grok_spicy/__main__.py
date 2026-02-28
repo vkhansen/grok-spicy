@@ -123,6 +123,20 @@ def main():
         help="Character reference image: NAME=PATH (repeatable)",
     )
     parser.add_argument(
+        "--script",
+        metavar="FILE",
+        help="Path to a JSON file matching the StoryPlan schema. "
+        "Skips ideation — the plan is used verbatim.",
+    )
+    parser.add_argument(
+        "--max-duration",
+        type=int,
+        default=15,
+        metavar="SECONDS",
+        help="Maximum per-scene duration in seconds (3-15, default: 15). "
+        "Use 8 to force all scenes into the correction-eligible tier.",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Debug mode: only generate 1 scene (faster, cheaper test runs)",
@@ -135,8 +149,38 @@ def main():
     )
     args = parser.parse_args()
 
+    # Validate --max-duration
+    if not 3 <= args.max_duration <= 15:
+        print(
+            f"Error: --max-duration must be between 3 and 15, got {args.max_duration}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     # Re-configure logging now that we know the verbosity flag
     setup_logging(verbose=args.verbose)
+
+    # ─── --script mode: load pre-built StoryPlan ──────────────
+    script_plan = None
+    if args.script:
+        if not os.path.isfile(args.script):
+            print(f"Error: script file not found: {args.script}", file=sys.stderr)
+            sys.exit(1)
+        from grok_spicy.schemas import StoryPlan
+
+        with open(args.script, encoding="utf-8") as f:
+            raw = f.read()
+        try:
+            script_plan = StoryPlan.model_validate_json(raw)
+        except Exception as exc:
+            print(f"Error: invalid script file: {exc}", file=sys.stderr)
+            sys.exit(1)
+        logger.info(
+            "Loaded script plan: title=%r, %d characters, %d scenes",
+            script_plan.title,
+            len(script_plan.characters),
+            len(script_plan.scenes),
+        )
 
     # ─── --web mode: server only, no pipeline ─────────────────
     if args.web:
@@ -186,6 +230,9 @@ def main():
             logger.debug("  Concept %d (%d chars): %.200s", idx, len(c), c)
     elif args.concept:
         concepts.append(args.concept)
+    elif script_plan:
+        # --script mode: concept not needed, use plan title as placeholder
+        concepts.append(script_plan.title)
     else:
         parser.print_help()
         sys.exit(0)
@@ -271,6 +318,8 @@ def main():
                 observer=observer,
                 character_refs=character_refs,
                 debug=args.debug,
+                max_duration=args.max_duration,
+                script_plan=script_plan,
             )
             print(f"\nDone: {result}")
 
@@ -298,6 +347,8 @@ def main():
                 concept,
                 character_refs=character_refs,
                 debug=args.debug,
+                max_duration=args.max_duration,
+                script_plan=script_plan,
             )
             print(f"\nDone: {result}")
 

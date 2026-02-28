@@ -8,6 +8,7 @@ from prefect import task
 
 from grok_spicy.client import (
     CONSISTENCY_THRESHOLD,
+    EXTENDED_RETRY_THRESHOLD,
     MAX_REWORD_ATTEMPTS,
     MAX_VIDEO_CORRECTIONS,
     MODEL_REASONING,
@@ -48,10 +49,17 @@ def generate_scene_video(
     """
     from xai_sdk.chat import image, user
 
+    correction_eligible = scene.duration_seconds <= 8
+    tier = (
+        "standard (correction eligible)"
+        if correction_eligible
+        else "extended (no correction)"
+    )
     logger.info(
-        "Video generation starting: scene=%d, duration=%ds, model=%s, resolution=%s",
+        "Video generation starting: scene=%d, duration=%ds, tier=%s, model=%s, resolution=%s",
         scene.scene_id,
         scene.duration_seconds,
+        tier,
         MODEL_VIDEO,
         RESOLUTION,
     )
@@ -149,7 +157,6 @@ def generate_scene_video(
     )
 
     # 5d: Correction loop (only for clips ≤ 8s, API limit 8.7s)
-    correction_eligible = scene.duration_seconds <= 8
     if not correction_eligible:
         logger.info(
             "Scene %d: correction ineligible (duration=%ds > 8s limit)",
@@ -249,6 +256,44 @@ def generate_scene_video(
             scene.scene_id,
             score.overall_score,
         )
+
+    # 5e: Extended-scene retry — regenerate from scratch if score is very low
+    if not correction_eligible and score.overall_score < EXTENDED_RETRY_THRESHOLD:
+        logger.warning(
+            "Scene %d: extended scene scored %.2f < %.2f, regenerating from scratch",
+            scene.scene_id,
+            score.overall_score,
+            EXTENDED_RETRY_THRESHOLD,
+        )
+        retry_prompt = keyframe.video_prompt
+        if score.issues:
+            retry_prompt += f" Fix: {'; '.join(score.issues)}"
+        vid = client.video.generate(prompt=retry_prompt, **vid_kw)
+        for _rw in range(MAX_REWORD_ATTEMPTS):
+            if not is_moderated(vid.url):
+                break
+            logger.warning(
+                "Scene %d: extended retry moderation hit (reword %d/%d)",
+                scene.scene_id,
+                _rw + 1,
+                MAX_REWORD_ATTEMPTS,
+            )
+            retry_prompt = reword_prompt(retry_prompt)
+            vid = client.video.generate(prompt=retry_prompt, **vid_kw)
+        if not is_moderated(vid.url):
+            retry_path = f"output/videos/scene_{scene.scene_id}_retry.mp4"
+            download(vid.url, retry_path)
+            video_path = retry_path
+            current_url = vid.url
+            extract_frame(video_path, first_frame, "first")
+            extract_frame(video_path, last_frame, "last")
+            score = _check_consistency()
+            logger.info(
+                "Scene %d: extended retry score=%.2f (was %.2f)",
+                scene.scene_id,
+                score.overall_score,
+                EXTENDED_RETRY_THRESHOLD,
+            )
 
     logger.info(
         "Video done: scene=%d, final_score=%.2f, corrections=%d, path=%s",

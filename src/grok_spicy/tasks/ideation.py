@@ -47,6 +47,14 @@ SYSTEM_PROMPT = (
     "Example: 'Fox leaps over mossy log, landing in a spray of golden leaves while owl watches from a gnarled branch.'\n"
     "- Sequence scenes logically to match any implied timeline in the concept.\n"
     "- Keep total characters per scene to 1–3 (max 4) to avoid visual clutter and consistency issues.\n\n"
+    "Scene Duration Guidelines (Two Tiers):\n"
+    "- Use 3–8 seconds for scenes with named characters (enables drift correction in the video pipeline).\n"
+    "- Use 9–15 seconds for establishing shots, landscapes, transitions, or scenes where character consistency is less critical. "
+    "These longer scenes CANNOT be corrected after generation, so the prompt must be precise.\n"
+    "- For scenes >8 seconds, write the action field as TWO sequential phases separated by a semicolon "
+    "(e.g., 'camera pans across the valley; sun breaks through clouds and light floods the meadow'). "
+    "The prompt_summary should describe the culminating visual beat.\n"
+    "- Default to 8 seconds when unsure.\n\n"
 )
 
 
