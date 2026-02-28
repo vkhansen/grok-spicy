@@ -129,7 +129,11 @@ def main():
 
         set_db(init_db())
         logger.info("Starting dashboard-only mode on port %d", args.port)
-        print(f"Dashboard: http://localhost:{args.port}")
+        print()
+        print("=" * 60)
+        print(f"  DASHBOARD: http://localhost:{args.port}")
+        print("=" * 60)
+        print()
         uvicorn.run(app, host="0.0.0.0", port=args.port)
         sys.exit(0)
 
@@ -207,9 +211,18 @@ def main():
             daemon=True,
         )
         server_thread.start()
-        print(f"Dashboard: http://localhost:{args.port}")
 
         from grok_spicy.pipeline import video_pipeline
+
+        # Print AFTER Prefect import so it appears below Prefect's
+        # "Starting temporary server on http://127.0.0.1:XXXX" message.
+        # That Prefect URL is NOT the dashboard — this one is.
+        print()
+        print("=" * 60)
+        print(f"  DASHBOARD: http://localhost:{args.port}")
+        print(f"  (ignore the Prefect server URL above — that is internal)")
+        print("=" * 60)
+        print()
 
         for i, concept in enumerate(concepts, 1):
             if total > 1:
@@ -224,11 +237,12 @@ def main():
             )
             print(f"\nDone: {result}")
 
-        print(
-            f"\nAll {total} run(s) complete. "
-            f"Dashboard still running at http://localhost:{args.port} "
-            f"— Ctrl+C to stop"
-        )
+        print()
+        print("=" * 60)
+        print(f"  All {total} run(s) complete.")
+        print(f"  DASHBOARD: http://localhost:{args.port}")
+        print(f"  Press Ctrl+C to stop the server.")
+        print("=" * 60)
         server_thread.join()
     else:
         # ─── Default: pipeline only ──────────────────────────

@@ -211,6 +211,37 @@ def video_pipeline(
         if matched_refs:
             print(f"  Ref images matched: {list(matched_refs.keys())}")
 
+        # Override visual descriptions with ref-extracted ones (bulletproof —
+        # the LLM may have ignored the VERBATIM instruction and padded them)
+        if ref_descriptions and matched_refs:
+            for char in plan.characters:
+                if char.name in matched_refs and char.name in ref_descriptions:
+                    old_len = len(char.visual_description)
+                    char.visual_description = ref_descriptions[char.name]
+                    logger.info(
+                        "Overrode visual_description for %r: %d chars → %d chars "
+                        "(from ref photo)",
+                        char.name,
+                        old_len,
+                        len(char.visual_description),
+                    )
+                elif char.name in matched_refs:
+                    # Ref matched by name but description keyed differently —
+                    # try case-insensitive lookup
+                    for ref_name, desc in ref_descriptions.items():
+                        if ref_name.lower() == char.name.lower():
+                            old_len = len(char.visual_description)
+                            char.visual_description = desc
+                            logger.info(
+                                "Overrode visual_description for %r (fuzzy "
+                                "match via %r): %d chars → %d chars",
+                                char.name,
+                                ref_name,
+                                old_len,
+                                len(char.visual_description),
+                            )
+                            break
+
         # ═══ STEP 2: CHARACTER SHEETS (parallel) ═══
         logger.info("STEP 2: Character sheets — generating %d", len(plan.characters))
         print("=== STEP 2: Character sheets ===")
