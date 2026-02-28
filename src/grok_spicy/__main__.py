@@ -95,7 +95,8 @@ def main():
     parser.add_argument(
         "--prompt-file",
         metavar="FILE",
-        help="Read concept from a text file (one concept per line, blank lines ignored)",
+        help="Read concepts from a text file (blocks separated by blank lines; "
+        "lines starting with # are comments)",
     )
     parser.add_argument("--output-dir", default="output", help="Output directory")
     parser.add_argument(
@@ -161,14 +162,28 @@ def main():
         if not os.path.isfile(path):
             print(f"Error: prompt file not found: {path}", file=sys.stderr)
             sys.exit(1)
+        # Parse prompt file: blank lines separate concepts, # lines are comments.
+        # Consecutive non-blank lines are joined with spaces into one concept.
         with open(path, encoding="utf-8") as f:
-            for line in f:
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    concepts.append(stripped)
+            raw_lines = f.readlines()
+        current_block: list[str] = []
+        for line in raw_lines:
+            stripped = line.strip()
+            if not stripped:
+                # Blank line = concept separator
+                if current_block:
+                    concepts.append(" ".join(current_block))
+                    current_block = []
+            elif not stripped.startswith("#"):
+                current_block.append(stripped)
+        if current_block:
+            concepts.append(" ".join(current_block))
         if not concepts:
             print(f"Error: no prompts found in {path}", file=sys.stderr)
             sys.exit(1)
+        logger.info("Loaded %d concept(s) from %s", len(concepts), path)
+        for idx, c in enumerate(concepts, 1):
+            logger.debug("  Concept %d (%d chars): %.200s", idx, len(c), c)
     elif args.concept:
         concepts.append(args.concept)
     else:
