@@ -37,11 +37,11 @@ def main():
 
     if not shutil.which("ffmpeg"):
         print(
-            "Error: FFmpeg not found on PATH.\n"
+            "Warning: FFmpeg not found on PATH. "
+            "Steps 5-6 (video generation/assembly) will fail.\n"
             "Install it: https://ffmpeg.org/download.html",
             file=sys.stderr,
         )
-        sys.exit(1)
 
     from grok_spicy.pipeline import video_pipeline
 
