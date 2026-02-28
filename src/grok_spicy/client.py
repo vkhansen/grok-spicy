@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import shutil
 import subprocess
 
 import requests
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # ─── Constants ────────────────────────────────────────────────
 
@@ -39,7 +42,10 @@ def get_client():
     load_dotenv()
     api_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
     if not api_key:
+        logger.error("No API key found in GROK_API_KEY or XAI_API_KEY")
         raise RuntimeError("No API key found. Set GROK_API_KEY in .env or environment.")
+    source = "GROK_API_KEY" if os.environ.get("GROK_API_KEY") else "XAI_API_KEY"
+    logger.debug("Creating xAI client (key source=%s)", source)
     return Client(api_key=api_key)
 
 
@@ -51,11 +57,14 @@ def download(url: str, path: str) -> str:
 
     Critical: Grok image/video URLs are temporary — call immediately.
     """
+    logger.debug("Downloading %s → %s", url[:80], path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     r = requests.get(url)
     r.raise_for_status()
     with open(path, "wb") as f:
         f.write(r.content)
+    size_kb = len(r.content) / 1024
+    logger.info("Downloaded %.1f KB → %s", size_kb, path)
     return path
 
 
@@ -64,8 +73,11 @@ def download(url: str, path: str) -> str:
 
 def to_base64(path: str) -> str:
     """Read a local file and return its base64-encoded contents."""
+    logger.debug("Encoding %s to base64", path)
     with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+        data = f.read()
+    logger.debug("Base64 encoded %d bytes from %s", len(data), path)
+    return base64.b64encode(data).decode()
 
 
 # ─── Frame extraction ────────────────────────────────────────
@@ -87,11 +99,15 @@ def extract_frame(video_path: str, output_path: str, position: str = "first") ->
         subprocess.CalledProcessError: If FFmpeg fails.
     """
     if not shutil.which("ffmpeg"):
+        logger.error("FFmpeg not found on PATH")
         raise FileNotFoundError(
             "FFmpeg not found on PATH. Install it: https://ffmpeg.org/download.html"
         )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    logger.debug(
+        "Extracting %s frame: %s → %s", position, video_path, output_path
+    )
 
     if position == "first":
         cmd = [
@@ -119,4 +135,5 @@ def extract_frame(video_path: str, output_path: str, position: str = "first") ->
         ]
 
     subprocess.run(cmd, capture_output=True, check=True)
+    logger.info("Extracted %s frame → %s", position, output_path)
     return output_path

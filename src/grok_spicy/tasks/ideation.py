@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from prefect import task
@@ -9,6 +10,8 @@ from prefect.tasks import task_input_hash
 
 from grok_spicy.client import MODEL_STRUCTURED, get_client
 from grok_spicy.schemas import StoryPlan
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a visual storytelling director. Create a production plan for a "
@@ -37,10 +40,26 @@ def plan_story(concept: str) -> StoryPlan:
     """Generate a structured StoryPlan from a concept string."""
     from xai_sdk.chat import system, user
 
+    logger.info("Ideation starting — model=%s, concept=%r", MODEL_STRUCTURED, concept[:120])
+    logger.debug("Full concept: %s", concept)
+
     client = get_client()
     chat = client.chat.create(model=MODEL_STRUCTURED)
     chat.append(system(SYSTEM_PROMPT))
     chat.append(user(f"Create a visual story plan for: {concept}"))
+
+    logger.debug("Calling chat.parse(StoryPlan) for structured output")
     _, plan = chat.parse(StoryPlan)
     result: StoryPlan = plan
+
+    logger.info(
+        "Ideation complete — title=%r, style=%r, characters=%d, scenes=%d, "
+        "aspect=%s, palette=%r",
+        result.title,
+        result.style,
+        len(result.characters),
+        len(result.scenes),
+        result.aspect_ratio,
+        result.color_palette,
+    )
     return result

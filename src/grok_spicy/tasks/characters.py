@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from prefect import task
 
 from grok_spicy.client import (
@@ -13,6 +15,8 @@ from grok_spicy.client import (
     get_client,
 )
 from grok_spicy.schemas import Character, CharacterAsset, ConsistencyScore
+
+logger = logging.getLogger(__name__)
 
 
 @task(name="generate-character-sheet", retries=2, retry_delay_seconds=15)
@@ -32,11 +36,30 @@ def generate_character_sheet(
     """
     from xai_sdk.chat import image, user
 
+    mode = "stylize" if reference_image_path else "generate"
+    logger.info(
+        "Character sheet starting: name=%r, mode=%s, max_attempts=%d, threshold=%.2f",
+        character.name,
+        mode,
+        MAX_CHAR_ATTEMPTS,
+        CONSISTENCY_THRESHOLD,
+    )
+    if reference_image_path:
+        logger.debug("Reference image path: %s", reference_image_path)
+
     client = get_client()
     best: dict = {"score": 0.0, "url": "", "path": ""}
     attempt = 0
 
     for attempt in range(1, MAX_CHAR_ATTEMPTS + 1):
+        logger.info(
+            "Character %r attempt %d/%d (mode=%s)",
+            character.name,
+            attempt,
+            MAX_CHAR_ATTEMPTS,
+            mode,
+        )
+
         if reference_image_path:
             # STYLIZE MODE: edit the reference photo into the art style
             prompt = (
@@ -48,6 +71,7 @@ def generate_character_sheet(
                 f"reference sheet style. Sharp details, even studio lighting, "
                 f"no background clutter, no text or labels."
             )
+            logger.debug("Stylize prompt (len=%d): %s", len(prompt), prompt[:200])
             img = client.image.sample(
                 prompt=prompt,
                 model=MODEL_IMAGE,
@@ -64,18 +88,23 @@ def generate_character_sheet(
                 f"reference sheet style. Sharp details, even studio lighting, "
                 f"no background clutter, no text or labels."
             )
+            logger.debug("Generate prompt (len=%d): %s", len(prompt), prompt[:200])
             img = client.image.sample(
                 prompt=prompt,
                 model=MODEL_IMAGE,
                 aspect_ratio=aspect_ratio,
             )
 
+        logger.debug("Image generated, URL=%s", img.url[:80])
         path = download(
             img.url,
             f"output/character_sheets/{character.name}_v{attempt}.jpg",
         )
 
         # Vision verify
+        logger.debug(
+            "Vision verify: model=%s, character=%r", MODEL_REASONING, character.name
+        )
         chat = client.chat.create(model=MODEL_REASONING)
         chat.append(
             user(
@@ -88,7 +117,22 @@ def generate_character_sheet(
         )
         _, score = chat.parse(ConsistencyScore)
 
+        logger.info(
+            "Character %r attempt %d: score=%.2f (threshold=%.2f), issues=%s",
+            character.name,
+            attempt,
+            score.overall_score,
+            CONSISTENCY_THRESHOLD,
+            score.issues if hasattr(score, "issues") and score.issues else "none",
+        )
+
         if score.overall_score > best["score"]:
+            logger.debug(
+                "New best for %r: %.2f → %.2f",
+                character.name,
+                best["score"],
+                score.overall_score,
+            )
             best = {
                 "score": score.overall_score,
                 "url": img.url,
@@ -96,7 +140,29 @@ def generate_character_sheet(
             }
 
         if score.overall_score >= CONSISTENCY_THRESHOLD:
+            logger.info(
+                "Character %r passed threshold at attempt %d (score=%.2f >= %.2f)",
+                character.name,
+                attempt,
+                score.overall_score,
+                CONSISTENCY_THRESHOLD,
+            )
             break
+    else:
+        logger.warning(
+            "Character %r exhausted all %d attempts, using best score=%.2f",
+            character.name,
+            MAX_CHAR_ATTEMPTS,
+            best["score"],
+        )
+
+    logger.info(
+        "Character sheet done: name=%r, final_score=%.2f, attempts=%d, path=%s",
+        character.name,
+        best["score"],
+        attempt,
+        best["path"],
+    )
 
     return CharacterAsset(
         name=character.name,

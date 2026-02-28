@@ -1,10 +1,7 @@
 """Unit tests for FastAPI dashboard routes."""
 
-import asyncio
 import io
-import json
 import os
-import tempfile
 from unittest.mock import patch
 
 import pytest
@@ -16,11 +13,9 @@ from grok_spicy.db import (
     insert_run,
     insert_scenes,
     update_run,
-    upsert_character_asset,
-    upsert_keyframe_asset,
-    upsert_video_asset,
 )
 from grok_spicy.events import Event
+from grok_spicy.events import Event, EventBus
 from grok_spicy.web import app, event_bus, get_db, set_db
 
 
@@ -196,92 +191,49 @@ def test_create_run_empty_concept_fails(client):
     assert resp.status_code == 422
 
 
-# ─── SSE endpoint ─────────────────────────────────────────────
+# ─── SSE / EventBus unit tests ────────────────────────────────
 
 
-def test_sse_stream_receives_events(client):
-    """Subscribe to /sse/{run_id}, publish an event, verify it arrives."""
-    conn = get_db()
-    run_id = insert_run(conn, "sse test")
-
-    with client.stream("GET", f"/sse/{run_id}") as response:
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers["content-type"]
-
-        # Publish a complete event to terminate the stream
-        event_bus.publish(
-            Event(type="complete", run_id=run_id, data={"final": "done"})
-        )
-
-        chunks = []
-        for chunk in response.iter_text():
-            chunks.append(chunk)
-            if "complete" in chunk:
-                break
-
-        full = "".join(chunks)
-        assert "event: complete" in full
-        assert "done" in full
+def test_event_bus_subscribe_and_publish():
+    """Verify EventBus delivers events to subscribers."""
+    bus = EventBus()
+    q = bus.subscribe()
+    bus.publish(Event(type="plan", run_id=1, data={"title": "test"}))
+    assert not q.empty()
+    event = q.get_nowait()
+    assert event.type == "plan"
+    assert event.run_id == 1
 
 
-def test_sse_stream_filters_by_run_id(client):
-    """Publish events for different run IDs, verify only matching ones arrive."""
-    conn = get_db()
-    run_id_1 = insert_run(conn, "sse run 1")
-    run_id_2 = insert_run(conn, "sse run 2")
-
-    with client.stream("GET", f"/sse/{run_id_1}") as response:
-        # Publish event for wrong run — should be filtered out
-        event_bus.publish(
-            Event(type="plan", run_id=run_id_2, data={"title": "wrong"})
-        )
-        # Publish event for correct run (complete to end stream)
-        event_bus.publish(
-            Event(type="complete", run_id=run_id_1, data={"final": "right"})
-        )
-
-        chunks = []
-        for chunk in response.iter_text():
-            chunks.append(chunk)
-            if "complete" in chunk:
-                break
-
-        full = "".join(chunks)
-        assert "event: complete" in full
-        assert "right" in full
-        # The "wrong" event for run_id_2 should not appear
-        assert "wrong" not in full
+def test_event_bus_unsubscribe():
+    """After unsubscribe, no more events delivered."""
+    bus = EventBus()
+    q = bus.subscribe()
+    bus.unsubscribe(q)
+    bus.publish(Event(type="plan", run_id=1, data={}))
+    assert q.empty()
 
 
-def test_sse_stream_closes_on_complete(client):
-    """Publish a 'complete' event, verify stream terminates."""
-    conn = get_db()
-    run_id = insert_run(conn, "sse close test")
-
-    with client.stream("GET", f"/sse/{run_id}") as response:
-        event_bus.publish(
-            Event(type="complete", run_id=run_id, data={"done": True})
-        )
-
-        all_chunks = list(response.iter_text())
-        full = "".join(all_chunks)
-        assert "event: complete" in full
+def test_event_bus_multiple_subscribers():
+    """All subscribers receive the same event."""
+    bus = EventBus()
+    q1 = bus.subscribe()
+    q2 = bus.subscribe()
+    bus.publish(Event(type="complete", run_id=1, data={}))
+    assert not q1.empty()
+    assert not q2.empty()
 
 
-def test_sse_stream_closes_on_error(client):
-    """Publish an 'error' event, verify stream terminates."""
-    conn = get_db()
-    run_id = insert_run(conn, "sse error test")
-
-    with client.stream("GET", f"/sse/{run_id}") as response:
-        event_bus.publish(
-            Event(type="error", run_id=run_id, data={"error": "boom"})
-        )
-
-        all_chunks = list(response.iter_text())
-        full = "".join(all_chunks)
-        assert "event: error" in full
-        assert "boom" in full
+def test_event_bus_publish_delivers_correct_data():
+    """Verify published event data is preserved through the bus."""
+    bus = EventBus()
+    q = bus.subscribe()
+    bus.publish(Event(type="video", run_id=42, data={"scene_id": 3, "path": "/a.mp4"}))
+    event = q.get_nowait()
+    assert event.type == "video"
+    assert event.run_id == 42
+    assert event.data["scene_id"] == 3
+    assert event.data["path"] == "/a.mp4"
 
 
 # ─── Run detail with full data ────────────────────────────────

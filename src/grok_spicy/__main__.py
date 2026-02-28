@@ -3,11 +3,48 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import shutil
 import sys
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
+
+
+def setup_logging(log_dir: str = "output") -> None:
+    """Configure logging with file and console handlers.
+
+    - File handler: DEBUG level → ``{log_dir}/grok_spicy.log``
+    - Console handler: INFO level → stderr
+    """
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "grok_spicy.log")
+
+    fmt = logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # File handler — captures everything (DEBUG+)
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(fmt)
+
+    # Console handler — user-visible messages (INFO+)
+    ch = logging.StreamHandler(sys.stderr)
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(fmt)
+
+    root = logging.getLogger("grok_spicy")
+    root.setLevel(logging.DEBUG)
+    root.addHandler(fh)
+    root.addHandler(ch)
+
+    logging.getLogger("grok_spicy").info(
+        "Logging initialised — file=%s (DEBUG), console (INFO)", log_path
+    )
 
 
 def _parse_refs(raw_refs: list[str]) -> dict[str, str]:
@@ -30,6 +67,7 @@ def _parse_refs(raw_refs: list[str]) -> dict[str, str]:
 
 def main():
     load_dotenv()
+    setup_logging()
 
     parser = argparse.ArgumentParser(
         prog="grok-spicy",
@@ -75,6 +113,7 @@ def main():
         from grok_spicy.web import app, set_db
 
         set_db(init_db())
+        logger.info("Starting dashboard-only mode on port %d", args.port)
         print(f"Dashboard: http://localhost:{args.port}")
         uvicorn.run(app, host="0.0.0.0", port=args.port)
         sys.exit(0)
@@ -100,6 +139,13 @@ def main():
         parser.print_help()
         sys.exit(0)
 
+    logger.info(
+        "Concepts to process: %d, serve=%s, refs=%d",
+        len(concepts),
+        args.serve,
+        len(args.ref),
+    )
+
     # Environment validation
     api_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
     if not api_key:
@@ -120,6 +166,8 @@ def main():
 
     # Parse reference images
     character_refs = _parse_refs(args.ref) if args.ref else None
+    if character_refs:
+        logger.info("Parsed reference images: %s", list(character_refs.keys()))
 
     total = len(concepts)
 
@@ -136,6 +184,7 @@ def main():
         conn = init_db()
         set_db(conn)
 
+        logger.info("Starting pipeline+dashboard mode on port %d", args.port)
         server_thread = threading.Thread(
             target=uvicorn.run,
             args=(app,),
