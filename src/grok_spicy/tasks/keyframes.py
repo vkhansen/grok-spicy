@@ -9,10 +9,13 @@ from prefect import task
 from grok_spicy.client import (
     CONSISTENCY_THRESHOLD,
     MAX_KEYFRAME_ITERS,
+    MAX_REWORD_ATTEMPTS,
     MODEL_IMAGE,
     MODEL_REASONING,
     download,
     get_client,
+    is_moderated,
+    reword_prompt,
 )
 from grok_spicy.schemas import (
     CharacterAsset,
@@ -112,8 +115,8 @@ def compose_keyframe(
                 MAX_KEYFRAME_ITERS,
                 MODEL_IMAGE,
             )
-            img = client.image.sample(
-                prompt=compose_prompt,
+            current_prompt = compose_prompt
+            sample_kw = dict(
                 model=MODEL_IMAGE,
                 image_urls=ref_urls,
                 aspect_ratio=plan.aspect_ratio,
@@ -127,11 +130,33 @@ def compose_keyframe(
                 MAX_KEYFRAME_ITERS,
                 fix_prompt or "",
             )
-            img = client.image.sample(
-                prompt=fix_prompt,
-                model=MODEL_IMAGE,
-                image_url=best["url"],
+            current_prompt = fix_prompt or ""
+            sample_kw = dict(model=MODEL_IMAGE, image_url=best["url"])
+
+        img = client.image.sample(prompt=current_prompt, **sample_kw)
+
+        # Moderation soft-fail: reword prompt and retry
+        for _rw in range(MAX_REWORD_ATTEMPTS):
+            if not is_moderated(img.url):
+                break
+            logger.warning(
+                "Scene %d iteration %d: moderation hit (reword %d/%d)",
+                scene.scene_id,
+                iteration,
+                _rw + 1,
+                MAX_REWORD_ATTEMPTS,
             )
+            current_prompt = reword_prompt(current_prompt)
+            img = client.image.sample(prompt=current_prompt, **sample_kw)
+        if is_moderated(img.url):
+            logger.warning(
+                "Scene %d iteration %d: still moderated after %d rewords, "
+                "skipping iteration",
+                scene.scene_id,
+                iteration,
+                MAX_REWORD_ATTEMPTS,
+            )
+            continue
 
         path = download(
             img.url,

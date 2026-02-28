@@ -9,10 +9,13 @@ from prefect import task
 from grok_spicy.client import (
     CONSISTENCY_THRESHOLD,
     MAX_CHAR_ATTEMPTS,
+    MAX_REWORD_ATTEMPTS,
     MODEL_IMAGE,
     MODEL_REASONING,
     download,
     get_client,
+    is_moderated,
+    reword_prompt,
     to_base64,
 )
 from grok_spicy.schemas import Character, CharacterAsset, ConsistencyScore
@@ -76,8 +79,7 @@ def generate_character_sheet(
             logger.info("Stylize prompt: %s", prompt)
             ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
             logger.debug("Encoded reference image to base64 data URI")
-            img = client.image.sample(
-                prompt=prompt,
+            sample_kw = dict(
                 model=MODEL_IMAGE,
                 image_url=ref_b64,
                 aspect_ratio=aspect_ratio,
@@ -93,11 +95,32 @@ def generate_character_sheet(
                 f"no background clutter, no text or labels."
             )
             logger.info("Generate prompt: %s", prompt)
-            img = client.image.sample(
-                prompt=prompt,
-                model=MODEL_IMAGE,
-                aspect_ratio=aspect_ratio,
+            sample_kw = dict(model=MODEL_IMAGE, aspect_ratio=aspect_ratio)
+
+        img = client.image.sample(prompt=prompt, **sample_kw)
+
+        # Moderation soft-fail: reword prompt and retry
+        for _rw in range(MAX_REWORD_ATTEMPTS):
+            if not is_moderated(img.url):
+                break
+            logger.warning(
+                "Character %r attempt %d: moderation hit (reword %d/%d)",
+                character.name,
+                attempt,
+                _rw + 1,
+                MAX_REWORD_ATTEMPTS,
             )
+            prompt = reword_prompt(prompt)
+            img = client.image.sample(prompt=prompt, **sample_kw)
+        if is_moderated(img.url):
+            logger.warning(
+                "Character %r attempt %d: still moderated after %d rewords, "
+                "skipping attempt",
+                character.name,
+                attempt,
+                MAX_REWORD_ATTEMPTS,
+            )
+            continue
 
         logger.debug("Image generated, URL=%s", img.url[:80])
         path = download(

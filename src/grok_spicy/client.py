@@ -21,6 +21,8 @@ MAX_KEYFRAME_ITERS = 3
 MAX_VIDEO_CORRECTIONS = 2
 DEFAULT_DURATION = 8
 RESOLUTION = "720p"
+MODERATED_URL_SENTINEL = "moderated_content"
+MAX_REWORD_ATTEMPTS = 2
 
 MODEL_IMAGE = "grok-imagine-image"
 MODEL_VIDEO = "grok-imagine-video"
@@ -78,6 +80,52 @@ def to_base64(path: str) -> str:
         data = f.read()
     logger.debug("Base64 encoded %d bytes from %s", len(data), path)
     return base64.b64encode(data).decode()
+
+
+# ─── Moderation helpers ──────────────────────────────────────
+
+
+def is_moderated(url: str) -> bool:
+    """Check if a generation result URL indicates content was moderation-blocked."""
+    return MODERATED_URL_SENTINEL in url
+
+
+def reword_prompt(prompt: str) -> str:
+    """Use Grok to rephrase a prompt that was blocked by content moderation.
+
+    Returns a reworded version that preserves scene composition, character names,
+    camera work, and style while toning down explicit content.
+    """
+    from pydantic import BaseModel
+    from xai_sdk.chat import user as user_msg
+
+    class _Reworded(BaseModel):
+        reworded_prompt: str
+
+    logger.info("Rewording moderated prompt (%d chars)", len(prompt))
+    client = get_client()
+    chat = client.chat.create(model=MODEL_STRUCTURED)
+    chat.append(
+        user_msg(
+            "The following image/video generation prompt was blocked by content "
+            "moderation. Rephrase it to pass moderation while preserving the "
+            "scene composition, character names, positioning, camera angles, "
+            "lighting, and artistic style. Replace any explicit, revealing, or "
+            "NSFW clothing/body descriptions with tasteful, stylish alternatives "
+            "(e.g. replace lingerie with elegant evening wear, replace nudity "
+            "with fashionable outfits). Keep all other visual details intact. "
+            "Return ONLY the reworded prompt text.\n\n"
+            f"Blocked prompt:\n{prompt}"
+        )
+    )
+    _, result = chat.parse(_Reworded)
+    reworded: str = result.reworded_prompt
+    logger.info(
+        "Reworded prompt (%d chars): %.200s",
+        len(reworded),
+        reworded,
+    )
+    return reworded
 
 
 # ─── Frame extraction ────────────────────────────────────────

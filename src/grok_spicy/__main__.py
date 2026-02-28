@@ -56,9 +56,7 @@ def setup_logging(log_dir: str = "output", verbose: bool = False) -> None:
     # gets flipped back to True by a later dictConfig call.
     py_root = logging.getLogger()
     py_root.handlers = [
-        h
-        for h in py_root.handlers
-        if h.__class__.__name__ != "PrefectConsoleHandler"
+        h for h in py_root.handlers if h.__class__.__name__ != "PrefectConsoleHandler"
     ]
 
     logging.getLogger("grok_spicy").info(

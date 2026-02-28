@@ -8,6 +8,7 @@ from prefect import task
 
 from grok_spicy.client import (
     CONSISTENCY_THRESHOLD,
+    MAX_REWORD_ATTEMPTS,
     MAX_VIDEO_CORRECTIONS,
     MODEL_REASONING,
     MODEL_VIDEO,
@@ -15,6 +16,8 @@ from grok_spicy.client import (
     download,
     extract_frame,
     get_client,
+    is_moderated,
+    reword_prompt,
     to_base64,
 )
 from grok_spicy.schemas import (
@@ -62,14 +65,33 @@ def generate_scene_video(
         "Scene %d: generating initial video from keyframe (image→video)",
         scene.scene_id,
     )
-    vid = client.video.generate(
-        prompt=keyframe.video_prompt,
+    vid_prompt = keyframe.video_prompt
+    vid_kw = dict(
         model=MODEL_VIDEO,
         image_url=keyframe.keyframe_url,
         duration=scene.duration_seconds,
         aspect_ratio="16:9",
         resolution=RESOLUTION,
     )
+    vid = client.video.generate(prompt=vid_prompt, **vid_kw)
+
+    # Moderation soft-fail: reword prompt and retry
+    for _rw in range(MAX_REWORD_ATTEMPTS):
+        if not is_moderated(vid.url):
+            break
+        logger.warning(
+            "Scene %d: video moderation hit (reword %d/%d)",
+            scene.scene_id,
+            _rw + 1,
+            MAX_REWORD_ATTEMPTS,
+        )
+        vid_prompt = reword_prompt(vid_prompt)
+        vid = client.video.generate(prompt=vid_prompt, **vid_kw)
+    if is_moderated(vid.url):
+        raise RuntimeError(
+            f"Scene {scene.scene_id}: video still moderated after "
+            f"{MAX_REWORD_ATTEMPTS} rewords"
+        )
 
     video_path = f"output/videos/scene_{scene.scene_id}.mp4"
     download(vid.url, video_path)
@@ -157,6 +179,34 @@ def generate_scene_video(
             model=MODEL_VIDEO,
             video_url=current_url,
         )
+
+        # Moderation soft-fail on correction: reword and retry
+        for _rw in range(MAX_REWORD_ATTEMPTS):
+            if not is_moderated(vid.url):
+                break
+            logger.warning(
+                "Scene %d correction %d: moderation hit (reword %d/%d)",
+                scene.scene_id,
+                corrections,
+                _rw + 1,
+                MAX_REWORD_ATTEMPTS,
+            )
+            fix = reword_prompt(fix)
+            vid = client.video.generate(
+                prompt=fix,
+                model=MODEL_VIDEO,
+                video_url=current_url,
+            )
+        if is_moderated(vid.url):
+            logger.warning(
+                "Scene %d correction %d: still moderated after %d rewords, "
+                "stopping corrections",
+                scene.scene_id,
+                corrections,
+                MAX_REWORD_ATTEMPTS,
+            )
+            break
+
         current_url = vid.url
         corr_path = f"output/videos/scene_{scene.scene_id}_c{corrections}.mp4"
         download(vid.url, corr_path)
