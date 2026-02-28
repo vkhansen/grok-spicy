@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled_modifiers": [
+      "detailed skin texture",
+      "warm intimate lighting",
+      "suggestive composition",
+      "tasteful nudity"
+    ],
+    "intensity": "medium",
+    "global_prefix": "Generate a sensual, artistically composed adult video: "
+  },
+  "characters": [
+    {
+      "id": "char_001",
+      "name": "Ivy",
+      "description": "Alluring 27-year-old woman with fiery red curly hair, bright green eyes, porcelain skin with freckles across her nose and shoulders, slender figure, wearing an oversized men's button-down shirt half-open, barefoot, natural effortless beauty",
+      "images": [],
+      "spicy_traits": ["coy smile", "relaxed sensuality", "playful eye contact"]
+    },
+    {
+      "id": "char_002",
+      "name": "Cole",
+      "description": "Handsome 30-year-old man with sandy blond hair slightly tousled, blue-gray eyes, light stubble, athletic swimmer's build, wearing gray sweatpants low on hips, no shirt, easygoing warm expression",
+      "images": [],
+      "spicy_traits": ["lazy confident grin", "gentle touch", "close proximity"]
+    }
+  ],
+  "default_video": {
+    "scene": "Cozy loft apartment on a rainy afternoon, large windows with rain streaking down, warm string lights, rumpled bed with white sheets, steam rising from coffee mugs on the nightstand",
+    "motion": "handheld intimate feel, slow push-ins, rack focus between subjects, warm color temperature",
+    "audio_cues": "rain on windows, soft lo-fi music, quiet laughter"
+  }
+}

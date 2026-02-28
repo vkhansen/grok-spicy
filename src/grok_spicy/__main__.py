@@ -161,6 +161,17 @@ def main():
         help="Override all max retry/iteration counts (characters, keyframes, video)",
     )
     parser.add_argument(
+        "--config",
+        metavar="PATH",
+        default=None,
+        help="Path to video.json config file (default: ./video.json)",
+    )
+    parser.add_argument(
+        "--spicy",
+        action="store_true",
+        help="Enable spicy mode using video.json configuration",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Debug mode: only generate 1 scene (faster, cheaper test runs)",
@@ -216,6 +227,24 @@ def main():
     if args.max_retries is not None:
         config_kw["max_retries"] = args.max_retries
     config = PipelineConfig(**config_kw)
+
+    # Load spicy VideoConfig if --spicy is enabled
+    video_config = None
+    if args.spicy:
+        from pathlib import Path
+
+        from grok_spicy.config import load_video_config
+
+        config_path = Path(args.config) if args.config else None
+        video_config = load_video_config(config_path)
+        logger.info(
+            "Spicy mode enabled — config v%s, intensity=%s, %d characters, "
+            "%d modifiers",
+            video_config.version,
+            video_config.spicy_mode.intensity,
+            len(video_config.characters),
+            len(video_config.spicy_mode.enabled_modifiers),
+        )
 
     # Re-configure logging now that we know the verbosity flag
     setup_logging(verbose=args.verbose)
@@ -379,6 +408,7 @@ def main():
                 character_refs=character_refs,
                 config=config,
                 script_plan=script_plan,
+                video_config=video_config,
             )
             print(f"\nDone: {result}")
 
@@ -407,6 +437,7 @@ def main():
                 character_refs=character_refs,
                 config=config,
                 script_plan=script_plan,
+                video_config=video_config,
             )
             print(f"\nDone: {result}")
 

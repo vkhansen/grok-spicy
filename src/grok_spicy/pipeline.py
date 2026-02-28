@@ -7,8 +7,15 @@ import os
 
 from prefect import flow
 
+from grok_spicy.client import download
 from grok_spicy.observer import NullObserver, PipelineObserver
-from grok_spicy.schemas import Character, PipelineConfig, PipelineState, StoryPlan
+from grok_spicy.schemas import (
+    Character,
+    PipelineConfig,
+    PipelineState,
+    StoryPlan,
+    VideoConfig,
+)
 from grok_spicy.tasks.assembly import assemble_final_video
 from grok_spicy.tasks.characters import generate_character_sheet
 from grok_spicy.tasks.describe_ref import describe_reference_image
@@ -18,6 +25,36 @@ from grok_spicy.tasks.script import compile_script
 from grok_spicy.tasks.video import generate_scene_video
 
 logger = logging.getLogger(__name__)
+
+
+def _enrich_characters_from_config(plan: StoryPlan, video_config: VideoConfig) -> None:
+    """Merge spicy config traits/modifiers into plan characters (in-place).
+
+    For each plan character whose name matches a config character, append
+    spicy traits and global modifiers to their visual_description.
+    """
+    cfg_chars = {c.name.lower(): c for c in video_config.characters}
+    modifiers = video_config.spicy_mode.enabled_modifiers
+
+    for char in plan.characters:
+        cfg_char = cfg_chars.get(char.name.lower())
+        extras: list[str] = []
+        if cfg_char and cfg_char.spicy_traits:
+            extras.extend(cfg_char.spicy_traits)
+            logger.info(
+                "Enriching character %r with spicy traits: %s",
+                char.name,
+                cfg_char.spicy_traits,
+            )
+        if modifiers:
+            extras.extend(modifiers)
+        if extras:
+            char.visual_description = f"{char.visual_description}, {', '.join(extras)}"
+            logger.debug(
+                "Enriched visual_description for %r (%d chars)",
+                char.name,
+                len(char.visual_description),
+            )
 
 
 def _save_state(state: PipelineState) -> None:
@@ -136,6 +173,7 @@ def video_pipeline(
     character_refs: dict[str, str] | None = None,
     config: PipelineConfig | None = None,
     script_plan: StoryPlan | None = None,
+    video_config: VideoConfig | None = None,
     # Deprecated kwargs — kept for backward compat (web.py, tests)
     debug: bool = False,
     max_duration: int = 15,
@@ -152,6 +190,55 @@ def video_pipeline(
         character_refs = {}
 
     logger.info("Pipeline started — concept=%r, refs=%d", concept, len(character_refs))
+    if video_config is not None:
+        logger.info(
+            "Spicy mode active — v%s, intensity=%s, %d config characters, "
+            "%d modifiers",
+            video_config.version,
+            video_config.spicy_mode.intensity,
+            len(video_config.characters),
+            len(video_config.spicy_mode.enabled_modifiers),
+        )
+        print(
+            f"=== SPICY MODE: intensity={video_config.spicy_mode.intensity}, "
+            f"characters={len(video_config.characters)} ==="
+        )
+
+        # Resolve config character images and merge into character_refs
+        from grok_spicy.config import resolve_character_images
+
+        resolved_images = resolve_character_images(video_config)
+        for char in video_config.characters:
+            imgs = resolved_images.get(char.id, [])
+            if imgs and char.name not in character_refs:
+                # Use the first image as the reference for this character
+                first_img = imgs[0]
+                if not first_img.startswith(("http://", "https://")):
+                    character_refs[char.name] = first_img
+                    logger.info(
+                        "Spicy config: added local ref image for %r: %s",
+                        char.name,
+                        first_img,
+                    )
+                else:
+                    # Download URL to local cache
+                    safe = char.name.replace(" ", "_")
+                    dest = f"output/references/{safe}_config.jpg"
+                    try:
+                        download(first_img, dest)
+                        character_refs[char.name] = dest
+                        logger.info(
+                            "Spicy config: downloaded ref image for %r: %s",
+                            char.name,
+                            dest,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to download config image for %r: %s",
+                            char.name,
+                            first_img,
+                            exc_info=True,
+                        )
 
     run_id = observer.on_run_start(concept)
     logger.info("Run ID assigned: %d", run_id)
@@ -195,7 +282,17 @@ def video_pipeline(
             # ═══ STEP 1: IDEATION ═══
             logger.info("STEP 1: Ideation — generating story plan")
             print("=== STEP 1: Planning story ===")
-            plan = plan_story(concept, ref_descriptions=ref_descriptions)
+
+            # When spicy mode is active, augment the concept with config context
+            ideation_concept = concept
+            if video_config is not None:
+                from grok_spicy.prompt_builder import build_spicy_prompt
+
+                spicy_prompt = build_spicy_prompt(video_config)
+                ideation_concept = f"{concept}\n\nSpicy mode context: {spicy_prompt}"
+                logger.info("Augmented concept with spicy prompt for ideation")
+
+            plan = plan_story(ideation_concept, ref_descriptions=ref_descriptions)
             logger.info(
                 "STEP 1 complete: title=%r, characters=%d, scenes=%d, "
                 "style=%r, aspect=%s",
@@ -287,6 +384,10 @@ def video_pipeline(
                 )
                 scene.duration_seconds = clamped
 
+        # ═══ SPICY: Enrich plan characters with config traits ═══
+        if video_config is not None:
+            _enrich_characters_from_config(plan, video_config)
+
         # ═══ STEP 2: CHARACTER SHEETS (parallel) ═══
         logger.info("STEP 2: Character sheets — generating %d", len(plan.characters))
         print("=== STEP 2: Character sheets ===")
@@ -327,7 +428,14 @@ def video_pipeline(
                 scene.scene_id,
                 "yes" if prev_url else "none",
             )
-            kf = compose_keyframe(scene, plan, char_map, prev_url, config=config)
+            kf = compose_keyframe(
+                scene,
+                plan,
+                char_map,
+                prev_url,
+                config=config,
+                video_config=video_config,
+            )
             keyframes.append(kf)
             prev_url = kf.keyframe_url
             logger.info(
@@ -379,7 +487,13 @@ def video_pipeline(
                 scene.duration_seconds,
                 tier,
             )
-            v = generate_scene_video(kf, scene, char_map, config=config)
+            v = generate_scene_video(
+                kf,
+                scene,
+                char_map,
+                config=config,
+                video_config=video_config,
+            )
             videos.append(v)
             logger.info(
                 "STEP 5 result: scene %d — score=%.2f, corrections=%d, path=%s",

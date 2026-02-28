@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled_modifiers": [
+      "soft romantic lighting",
+      "tasteful composition",
+      "elegant atmosphere"
+    ],
+    "intensity": "low",
+    "global_prefix": "Generate a romantic, tastefully composed video: "
+  },
+  "characters": [
+    {
+      "id": "char_001",
+      "name": "Sophia",
+      "description": "Elegant woman in her late 20s with wavy auburn hair, warm brown eyes, wearing a flowing silk evening dress in deep burgundy, delicate gold necklace, soft smile",
+      "images": [],
+      "spicy_traits": ["gentle gaze", "graceful posture"]
+    },
+    {
+      "id": "char_002",
+      "name": "Marcus",
+      "description": "Tall man in his early 30s with neat brown hair, green eyes, wearing a tailored charcoal suit with an open collar, confident but warm expression",
+      "images": [],
+      "spicy_traits": ["warm smile", "attentive stance"]
+    }
+  ],
+  "default_video": {
+    "scene": "Candlelit restaurant balcony overlooking a city skyline at sunset",
+    "motion": "slow dolly in, gentle focus pulls, warm color grading",
+    "audio_cues": "soft piano, ambient city sounds"
+  }
+}

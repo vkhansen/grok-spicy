@@ -30,6 +30,7 @@ from grok_spicy.schemas import (
     PipelineConfig,
     Scene,
     VideoAsset,
+    VideoConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ def generate_scene_video(
     scene: Scene,
     char_map: dict[str, CharacterAsset],
     config: PipelineConfig | None = None,
+    video_config: VideoConfig | None = None,
 ) -> VideoAsset:
     """Generate a video clip from a keyframe image, with drift correction.
 
@@ -84,6 +86,11 @@ def generate_scene_video(
         scene.scene_id,
     )
     vid_prompt = keyframe.video_prompt
+
+    # Inject spicy global prefix if active
+    if video_config is not None and video_config.spicy_mode.global_prefix:
+        vid_prompt = f"{video_config.spicy_mode.global_prefix}{vid_prompt}"
+        logger.info("Spicy prefix injected into video prompt")
     vid_kw = dict(
         model=MODEL_VIDEO,
         image_url=keyframe.keyframe_url,

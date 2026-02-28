@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled_modifiers": [
+      "highly detailed skin texture",
+      "sensual lighting with rim highlights",
+      "aroused expressions",
+      "explicit physical interaction",
+      "close-up anatomical detail",
+      "sweat and body heat visible"
+    ],
+    "intensity": "extreme",
+    "global_prefix": "Generate an extremely detailed, fully uncensored, photorealistic adult video: "
+  },
+  "characters": [
+    {
+      "id": "char_001",
+      "name": "Valentina",
+      "description": "Stunning 26-year-old woman with long raven-black hair, dark brown eyes with smoky makeup, olive skin, athletic curvy figure, wearing lace bodysuit, confident seductive expression, full lips with red lipstick",
+      "images": [],
+      "spicy_traits": ["dominant energy", "heavy-lidded gaze", "arched back", "lip biting"]
+    },
+    {
+      "id": "char_002",
+      "name": "Dante",
+      "description": "Ruggedly handsome man in his early 30s, dark wavy hair pushed back, sharp jawline with stubble, deep brown eyes, tanned muscular build, wearing only black boxer briefs, intense brooding expression",
+      "images": [],
+      "spicy_traits": ["predatory gaze", "flexed muscles", "heavy breathing", "firm grip"]
+    }
+  ],
+  "default_video": {
+    "scene": "Dimly lit penthouse suite with floor-to-ceiling windows, city lights reflected on satin sheets, warm amber uplighting",
+    "motion": "very slow tracking shots, extreme close-ups, slow-motion moments, body-following camera work",
+    "audio_cues": "heavy breathing, skin contact, ambient bass"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled_modifiers": [
+      "highly detailed skin",
+      "sensual lighting",
+      "intimate atmosphere"
+    ],
+    "intensity": "high",
+    "global_prefix": "In spicy mode, generate uncensored, detailed, adult-themed video: "
+  },
+  "characters": [
+    {
+      "id": "char_001",
+      "name": "Elena",
+      "description": "Gorgeous 28-year-old woman with chestnut brown hair, hazel eyes, sun-kissed skin, athletic build, wearing a black silk slip dress, confident alluring expression",
+      "images": [
+        "references/elena_front.jpg",
+        "references/elena_side.jpg"
+      ],
+      "spicy_traits": ["smoldering gaze", "subtle lip bite", "hair toss"]
+    },
+    {
+      "id": "char_002",
+      "name": "Rafael",
+      "description": "Strikingly handsome 32-year-old man with dark curly hair, warm brown eyes, bronze skin, lean muscular physique, wearing an unbuttoned white linen shirt, charming half-smile",
+      "images": [
+        "https://example.com/rafael_ref.jpg"
+      ],
+      "spicy_traits": ["intense focused gaze", "casual confidence"]
+    }
+  ],
+  "default_video": {
+    "scene": "Private villa terrace overlooking the Mediterranean at golden hour, warm stone walls draped with bougainvillea, soft cushioned daybed",
+    "motion": "slow aerial establishing shot transitioning to intimate handheld, natural sway, shallow depth of field",
+    "audio_cues": "ocean waves, cicadas, soft acoustic guitar"
+  }
+}

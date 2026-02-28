@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled_modifiers": [
+      "highly detailed skin",
+      "sensual lighting",
+      "aroused expression",
+      "explicit interaction"
+    ],
+    "intensity": "high",
+    "global_prefix": "In spicy mode, generate uncensored, detailed, adult-themed video: "
+  },
+  "characters": [
+    {
+      "id": "char_001",
+      "name": "Luna",
+      "description": "A seductive 25-year-old woman with long silver hair, piercing blue eyes, curvaceous figure, wearing sheer lingerie, aroused expression, glossy lips, highly detailed realistic skin texture",
+      "images": [],
+      "spicy_traits": ["dominant", "teasing smile", "heavy breathing"]
+    },
+    {
+      "id": "char_002",
+      "name": "Kai",
+      "description": "Handsome muscular man in his 30s, short dark hair, intense gaze, shirtless with defined abs, passionate and confident demeanor",
+      "images": [],
+      "spicy_traits": ["intense eye contact", "strong hands"]
+    }
+  ],
+  "default_video": {
+    "scene": "Luxurious dimly lit bedroom at night",
+    "motion": "slow panning camera, smooth transitions, intimate close-ups",
+    "audio_cues": "soft moans, sensual music"
+  }
+}

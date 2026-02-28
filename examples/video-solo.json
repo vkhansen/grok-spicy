@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled_modifiers": [
+      "highly detailed skin",
+      "dramatic lighting",
+      "sensual pose",
+      "provocative framing"
+    ],
+    "intensity": "high",
+    "global_prefix": "Generate a detailed, uncensored solo performance video: "
+  },
+  "characters": [
+    {
+      "id": "char_001",
+      "name": "Aria",
+      "description": "Beautiful 24-year-old woman with platinum blonde hair in loose waves, crystal blue eyes, fair skin with light freckles, slender toned figure, wearing a sheer white robe loosely tied, natural makeup with glossy lips",
+      "images": [],
+      "spicy_traits": ["self-assured expression", "slow deliberate movements", "eye contact with camera", "playful hair touch"]
+    }
+  ],
+  "default_video": {
+    "scene": "Sunlit minimalist bedroom with white linen curtains billowing in a breeze, morning golden hour light streaming in",
+    "motion": "slow orbit around subject, gentle zoom transitions, soft focus background",
+    "audio_cues": "ambient wind, soft fabric rustling"
+  }
+}

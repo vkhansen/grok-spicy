@@ -27,6 +27,7 @@ from grok_spicy.schemas import (
     PipelineConfig,
     Scene,
     StoryPlan,
+    VideoConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ def compose_keyframe(
     char_map: dict[str, CharacterAsset],
     prev_last_frame_url: str | None,
     config: PipelineConfig | None = None,
+    video_config: VideoConfig | None = None,
 ) -> KeyframeAsset:
     """Compose a keyframe image for a scene using multi-image editing.
 
@@ -102,6 +104,14 @@ def compose_keyframe(
         color_palette=plan.color_palette,
         char_lines=char_lines,
     )
+
+    # Inject spicy modifiers into keyframe prompt
+    if video_config is not None:
+        spicy_suffix = ", ".join(video_config.spicy_mode.enabled_modifiers)
+        if spicy_suffix:
+            compose_prompt = f"{compose_prompt} {spicy_suffix}."
+            logger.info("Spicy modifiers injected into keyframe prompt")
+
     logger.info("Compose prompt: %s", compose_prompt)
 
     # Video prompt for Step 5 — tier-aware construction
@@ -113,6 +123,12 @@ def compose_keyframe(
         style=plan.style,
         duration_seconds=scene.duration_seconds,
     )
+    # Inject spicy modifiers into video prompt
+    if video_config is not None:
+        spicy_suffix = ", ".join(video_config.spicy_mode.enabled_modifiers)
+        if spicy_suffix:
+            video_prompt = f"{video_prompt} {spicy_suffix}."
+
     video_prompt = append_negative_prompt(video_prompt, config.negative_prompt)
     tier = (
         "standard (correction eligible)"

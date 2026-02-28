@@ -200,6 +200,165 @@ flowchart TD
 4. Characters without references generate from scratch as before
 5. The vision verification loop runs on all characters regardless of source
 
+## Spicy Mode
+
+Spicy mode enables adult-themed content generation controlled entirely through a `video.json` configuration file. No code changes needed -- just edit the JSON and run.
+
+### Quick Start
+
+```bash
+# Run with default video.json in project root
+python -m grok_spicy "A romantic encounter" --spicy
+
+# Run with a specific config file
+python -m grok_spicy "A romantic encounter" --spicy --config examples/video-extreme.json
+
+# Combine with other flags
+python -m grok_spicy "A romantic encounter" --spicy --serve --ref "Elena=photos/elena.jpg"
+```
+
+### How It Works
+
+When `--spicy` is passed, the pipeline loads `video.json` and weaves it into every step:
+
+```mermaid
+flowchart TD
+    A["video.json"] --> B["load_video_config()"]
+    B --> C{"Spicy mode active?"}
+    C -->|Yes| D["Augment concept with<br/>spicy context for ideation"]
+    C -->|Yes| E["Enrich character descriptions<br/>with traits + modifiers"]
+    C -->|Yes| F["Inject modifiers into<br/>keyframe prompts"]
+    C -->|Yes| G["Prepend global_prefix<br/>to video prompts"]
+    C -->|No| H["Pipeline runs normally<br/>(unchanged behavior)"]
+
+    style A fill:#2d2d2d,stroke:#f94,color:#e0e0e0
+    style C fill:#2d2d2d,stroke:#ff9,color:#e0e0e0
+```
+
+1. **Ideation** -- the concept is augmented with a full spicy prompt built from config characters, modifiers, and scene defaults
+2. **Character enrichment** -- plan characters matching config names get spicy traits and global modifiers appended to their `visual_description`
+3. **Keyframe composition** -- enabled modifiers are injected into every keyframe and video prompt
+4. **Video generation** -- the `global_prefix` is prepended to video generation prompts
+5. **Image references** -- character images from the config (URLs or local paths) are resolved and merged into the pipeline's reference image system
+
+### `video.json` Schema
+
+```json
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled_modifiers": ["modifier1", "modifier2"],
+    "intensity": "high",
+    "global_prefix": "Prefix prepended to all prompts: "
+  },
+  "characters": [
+    {
+      "id": "char_001",
+      "name": "Luna",
+      "description": "Full visual description used verbatim in prompts",
+      "images": ["path/to/ref.jpg", "https://example.com/ref.png"],
+      "spicy_traits": ["trait1", "trait2"]
+    }
+  ],
+  "default_video": {
+    "scene": "Default scene description when none specified",
+    "motion": "Default camera/motion instructions",
+    "audio_cues": "Audio atmosphere hints"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `version` | string | Yes | Schema version (currently `"1.0"`) |
+| `spicy_mode.enabled_modifiers` | string[] | Yes | Prompt modifiers injected into every generation |
+| `spicy_mode.intensity` | enum | Yes | `low` / `medium` / `high` / `extreme` -- controls how many modifiers are used |
+| `spicy_mode.global_prefix` | string | Yes | Text prepended to all video prompts |
+| `characters` | object[] | Yes | Array of 0 or more character definitions |
+| `characters[].id` | string | Yes | Unique identifier (e.g. `"char_001"`) |
+| `characters[].name` | string | Yes | Display name -- must match character names in story for trait enrichment |
+| `characters[].description` | string | Yes | Full visual description used verbatim in prompts |
+| `characters[].images` | string[] | No | Reference image URLs or local paths (relative to project root) |
+| `characters[].spicy_traits` | string[] | No | Per-character modifiers appended to prompts |
+| `default_video.scene` | string | No | Fallback scene when none is specified |
+| `default_video.motion` | string | No | Default camera/motion instructions |
+| `default_video.audio_cues` | string | No | Audio atmosphere hints (informational) |
+
+### Intensity Levels
+
+Intensity controls how many `enabled_modifiers` are actually used:
+
+| Intensity | Modifiers Used | Extra Behavior |
+|---|---|---|
+| `low` | First 1 only | Subtle, minimal enhancement |
+| `medium` | First 2 only | Moderate enhancement |
+| `high` | All modifiers | Full enhancement |
+| `extreme` | All modifiers | Adds `(extreme detail, maximum realism)` emphasis |
+
+### Character Count Logic
+
+The prompt builder adapts based on how many characters are defined:
+
+| Characters | Prompt Strategy |
+|---|---|
+| **0** | Scene/atmosphere only -- uses `default_video.scene` + `motion` + modifiers |
+| **1** | Single-focus -- character description + traits + scene + modifiers |
+| **2+** | Interaction-focused -- combines all descriptions with "interacting with" + all traits |
+
+### Character Image References
+
+Character images in `video.json` are resolved automatically:
+
+- **URLs** (`https://...`) -- downloaded and cached to `output/references/`
+- **Local paths** (`references/elena.jpg`) -- resolved relative to project root
+
+Config images are **additive** to `--ref` images. If a character has both a config image and a `--ref` image, the `--ref` image takes priority.
+
+### Graceful Fallback
+
+- If `video.json` is **missing** -- logs a warning, uses empty defaults (no crash)
+- If `video.json` has **invalid JSON** -- logs a warning, uses empty defaults
+- If `video.json` has **invalid schema** -- logs a warning, uses empty defaults
+- Without `--spicy` -- the config file is completely ignored, pipeline runs normally
+
+### Example Configurations
+
+Seven example configs are provided in `examples/`:
+
+| File | Intensity | Characters | Use Case |
+|---|---|---|---|
+| [`video-low.json`](examples/video-low.json) | `low` | 2 (Sophia, Marcus) | Romantic/tasteful -- candlelit dinner |
+| [`video-medium.json`](examples/video-medium.json) | `medium` | 2 (Ivy, Cole) | Sensual/artistic -- rainy afternoon loft |
+| [`video-high.json`](examples/video-high.json) | `high` | 2 (Luna, Kai) | Explicit -- dimly lit bedroom |
+| [`video-extreme.json`](examples/video-extreme.json) | `extreme` | 2 (Valentina, Dante) | Maximum detail -- penthouse suite |
+| [`video-solo.json`](examples/video-solo.json) | `high` | 1 (Aria) | Solo performance -- sunlit bedroom |
+| [`video-scene-only.json`](examples/video-scene-only.json) | `medium` | 0 | Atmospheric/cinematic -- abandoned hotel |
+| [`video-with-images.json`](examples/video-with-images.json) | `high` | 2 (Elena, Rafael) | Characters with reference images |
+
+```bash
+# Try different intensities
+python -m grok_spicy "A romantic evening" --spicy --config examples/video-low.json
+python -m grok_spicy "A passionate encounter" --spicy --config examples/video-extreme.json
+
+# Solo character
+python -m grok_spicy "A morning ritual" --spicy --config examples/video-solo.json
+
+# Pure atmosphere, no characters
+python -m grok_spicy "An abandoned place" --spicy --config examples/video-scene-only.json
+
+# With reference photos
+python -m grok_spicy "A summer romance" --spicy --config examples/video-with-images.json
+```
+
+### Creating Your Own Config
+
+1. Copy any example from `examples/` to `video.json` (or any path)
+2. Edit characters, descriptions, traits, and scene defaults
+3. Choose an intensity level
+4. Run with `--spicy` (and optionally `--config your-file.json`)
+
+The config is validated on load using Pydantic. If anything is wrong, you'll get a clear error message in the logs and the pipeline falls back to defaults.
+
 ## CLI Reference
 
 ```
@@ -208,23 +367,34 @@ python -m grok_spicy [concept] [options]
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `concept` | positional | — | Story concept (1-2 sentences) |
-| `--prompt-file` | string | — | Read concept(s) from a text file (one per line) |
+| `concept` | positional | -- | Story concept (1-2 sentences) |
+| `--prompt-file` | string | -- | Read concept(s) from a text file (one per line) |
 | `--output-dir` | string | `output` | Output directory |
 | `--serve` | flag | `false` | Start dashboard server alongside pipeline |
 | `--web` | flag | `false` | Start dashboard server only (browse past runs) |
 | `--port` | int | `8420` | Dashboard server port |
-| `--ref` | `NAME=PATH` | — | Character reference image (repeatable) |
+| `--ref` | `NAME=PATH` | -- | Character reference image (repeatable) |
+| `--spicy` | flag | `false` | Enable spicy mode using `video.json` configuration |
+| `--config` | string | `./video.json` | Path to video.json config file (used with `--spicy`) |
+| `--script` | string | -- | Path to a pre-built StoryPlan JSON (skips ideation) |
+| `--max-duration` | int | `15` | Max per-scene duration in seconds (3-15) |
+| `--negative-prompt` | string | -- | Appended as "Avoid: TEXT" to all generation prompts |
+| `--style-override` | string | -- | Replace the LLM-generated plan.style |
+| `--consistency-threshold` | float | `0.80` | Vision-check threshold (0.0-1.0) |
+| `--max-retries` | int | -- | Override all retry/iteration counts |
+| `--debug` | flag | `false` | Only generate 1 scene (faster test runs) |
 | `-v`, `--verbose` | flag | `false` | Enable DEBUG-level logging on the console |
 
 **Behavior matrix:**
 
-| Command | Pipeline | Dashboard |
-|---|---|---|
-| `python -m grok_spicy "concept"` | Runs | — |
-| `python -m grok_spicy "concept" --serve` | Runs | Background thread |
-| `python -m grok_spicy "concept" --ref "Alex=photo.jpg"` | Runs with refs | — |
-| `python -m grok_spicy --web` | — (launch from dashboard) | Main process |
+| Command | Pipeline | Dashboard | Spicy |
+|---|---|---|---|
+| `python -m grok_spicy "concept"` | Runs | -- | -- |
+| `python -m grok_spicy "concept" --spicy` | Runs | -- | Uses `./video.json` |
+| `python -m grok_spicy "concept" --spicy --config path.json` | Runs | -- | Uses custom config |
+| `python -m grok_spicy "concept" --serve` | Runs | Background thread | -- |
+| `python -m grok_spicy "concept" --ref "Alex=photo.jpg"` | Runs with refs | -- | -- |
+| `python -m grok_spicy --web` | -- (launch from dashboard) | Main process | -- |
 
 ## Output Structure
 
@@ -469,16 +639,19 @@ python -m pytest tests/ -v -m "live or not live"
 
 ```
 tests/
-├── README.md                # Detailed testing guide + troubleshooting
-├── test_schemas.py          # 5 tests — Pydantic models, JSON round-trips, field bounds
-├── test_client.py           # 2 tests — Constants, base64 encoding
-├── test_db.py               # 25 tests — SQLite schema, CRUD, upserts, JSON fields
-├── test_events.py           # 9 tests — EventBus subscribe/publish, queue ordering
-├── test_observer.py         # 10 tests — NullObserver, WebObserver, error resilience
-├── test_pipeline_helpers.py # 8 tests — _notify(), _match_character_refs()
-├── test_cli.py              # 10 tests — --ref parsing, --prompt-file, error handling
-├── test_web.py              # 22 tests — HTTP routes, JSON API, uploads, health, static
-└── test_web_live.py         # 5 tests — Real uvicorn server (marked @pytest.mark.live)
+├── README.md                 # Detailed testing guide + troubleshooting
+├── test_schemas.py           # 5 tests — Pydantic models, JSON round-trips, field bounds
+├── test_client.py            # 2 tests — Constants, base64 encoding
+├── test_db.py                # 25 tests — SQLite schema, CRUD, upserts, JSON fields
+├── test_events.py            # 9 tests — EventBus subscribe/publish, queue ordering
+├── test_observer.py          # 10 tests — NullObserver, WebObserver, error resilience
+├── test_pipeline_helpers.py  # 8 tests — _notify(), _match_character_refs()
+├── test_pipeline_config.py   # 13 tests — PipelineConfig defaults, overrides, bounds
+├── test_video_config.py      # 23 tests — VideoConfig schema, loader, caching, prompt builder
+├── test_prompts.py           # 22 tests — All prompt builder functions
+├── test_cli.py               # 9 tests — --ref parsing, --prompt-file, error handling
+├── test_web.py               # 22 tests — HTTP routes, JSON API, uploads, health, static
+└── test_web_live.py          # 5 tests — Real uvicorn server (marked @pytest.mark.live)
 ```
 
 Unit tests (everything except `test_web_live.py`) require no server, no API key, and no
@@ -523,12 +696,24 @@ grok-spicy/
 ├── requirements-dev.txt            # Dev dependencies (linting, testing)
 ├── .env.example                    # Environment variable template
 ├── .gitignore
+├── video.json                      # Spicy mode config (default, edit this)
+├── examples/                       # Example video.json configs
+│   ├── video-low.json              # Romantic/tasteful (low intensity)
+│   ├── video-medium.json           # Sensual/artistic (medium intensity)
+│   ├── video-high.json             # Explicit (high intensity)
+│   ├── video-extreme.json          # Maximum detail (extreme intensity)
+│   ├── video-solo.json             # Single character focus
+│   ├── video-scene-only.json       # No characters, pure atmosphere
+│   └── video-with-images.json      # Characters with reference images
 ├── src/
 │   └── grok_spicy/
 │       ├── __init__.py             # Package version
-│       ├── __main__.py             # CLI entry point (--serve, --web, --ref)
-│       ├── schemas.py              # Pydantic models (data contracts)
+│       ├── __main__.py             # CLI entry point (--serve, --web, --ref, --spicy)
+│       ├── schemas.py              # Pydantic models (data contracts + VideoConfig)
+│       ├── config.py               # video.json loader with caching + fallback
+│       ├── prompt_builder.py       # Spicy prompt composer (0/1/2+ character logic)
 │       ├── client.py               # xAI SDK wrapper + helpers
+│       ├── prompts.py              # Pure prompt builder functions (non-spicy)
 │       ├── pipeline.py             # Prefect flow (main orchestration)
 │       ├── db.py                   # SQLite schema + CRUD
 │       ├── events.py               # Thread-safe EventBus
@@ -554,6 +739,9 @@ grok-spicy/
 │   ├── test_events.py          # EventBus pub/sub
 │   ├── test_observer.py        # Observer pattern
 │   ├── test_pipeline_helpers.py # Pipeline utility functions
+│   ├── test_pipeline_config.py # PipelineConfig unit tests
+│   ├── test_video_config.py    # VideoConfig, config loader, prompt builder
+│   ├── test_prompts.py         # Prompt builder functions
 │   ├── test_cli.py             # CLI argument parsing
 │   ├── test_web.py             # Dashboard routes (unit)
 │   └── test_web_live.py        # Dashboard routes (live server)

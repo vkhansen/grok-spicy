@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 # ═══════════════════════════════════════════════════════════════
@@ -215,3 +217,43 @@ class PipelineState(BaseModel):
     keyframes: list[KeyframeAsset] = []
     videos: list[VideoAsset] = []
     final_video_path: str | None = None
+
+
+# ═══════════════════════════════════════════════════════════════
+# SPICY MODE CONFIG (loaded from video.json)
+# ═══════════════════════════════════════════════════════════════
+
+
+class SpicyMode(BaseModel):
+    """Global spicy-mode modifiers and prefix."""
+
+    enabled_modifiers: list[str]
+    intensity: Literal["low", "medium", "high", "extreme"]
+    global_prefix: str
+
+
+class SpicyCharacter(BaseModel):
+    """A character defined in the spicy config."""
+
+    id: str
+    name: str
+    description: str
+    images: list[str] = []
+    spicy_traits: list[str] = []
+
+
+class DefaultVideo(BaseModel):
+    """Fallback scene/motion/audio settings."""
+
+    scene: str = ""
+    motion: str = ""
+    audio_cues: str = ""
+
+
+class VideoConfig(BaseModel):
+    """Top-level schema for video.json — spicy mode configuration."""
+
+    version: str = "1.0"
+    spicy_mode: SpicyMode
+    characters: list[SpicyCharacter] = []
+    default_video: DefaultVideo = DefaultVideo()

@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled_modifiers": [
+      "moody atmosphere",
+      "cinematic color grading",
+      "volumetric lighting"
+    ],
+    "intensity": "medium",
+    "global_prefix": "Generate a cinematic atmospheric video: "
+  },
+  "characters": [],
+  "default_video": {
+    "scene": "Abandoned art-deco hotel lobby at night, rain visible through broken stained glass windows, puddles reflecting neon light from the street outside, dust particles floating in shafts of colored light",
+    "motion": "slow steadicam walk-through, gentle upward tilts revealing architectural details, tracking shot through corridors",
+    "audio_cues": "rain, distant thunder, echoing footsteps, creaking wood"
+  }
+}
