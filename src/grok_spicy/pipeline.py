@@ -134,6 +134,7 @@ def video_pipeline(
     concept: str,
     observer: PipelineObserver | None = None,
     character_refs: dict[str, str] | None = None,
+    debug: bool = False,
 ) -> str:
     """End-to-end video generation pipeline.
 
@@ -236,6 +237,20 @@ def video_pipeline(
                         old_len,
                         len(char.visual_description),
                     )
+
+        # ═══ DEBUG MODE: trim to 1 scene ═══
+        if debug and len(plan.scenes) > 1:
+            logger.info("DEBUG MODE: trimming scenes from %d to 1", len(plan.scenes))
+            print("** DEBUG MODE: using only 1 scene **")
+            plan.scenes = plan.scenes[:1]
+            # Keep only characters present in the remaining scene
+            keep = set(plan.scenes[0].characters_present)
+            plan.characters = [c for c in plan.characters if c.name in keep]
+            logger.info(
+                "DEBUG MODE: kept %d character(s): %s",
+                len(plan.characters),
+                [c.name for c in plan.characters],
+            )
 
         # ═══ STEP 2: CHARACTER SHEETS (parallel) ═══
         logger.info("STEP 2: Character sheets — generating %d", len(plan.characters))

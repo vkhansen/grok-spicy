@@ -51,6 +51,16 @@ def setup_logging(log_dir: str = "output", verbose: bool = False) -> None:
     # Stop Prefect (or any parent logger) from duplicating our messages
     root.propagate = False
 
+    # Belt-and-suspenders: strip Prefect's console handler from the Python root
+    # logger so grok_spicy messages can never be double-printed even if propagate
+    # gets flipped back to True by a later dictConfig call.
+    py_root = logging.getLogger()
+    py_root.handlers = [
+        h
+        for h in py_root.handlers
+        if h.__class__.__name__ != "PrefectConsoleHandler"
+    ]
+
     logging.getLogger("grok_spicy").info(
         "Logging initialised — file=%s (DEBUG), console (%s)",
         log_path,
@@ -112,6 +122,11 @@ def main():
         default=[],
         metavar="NAME=PATH",
         help="Character reference image: NAME=PATH (repeatable)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Debug mode: only generate 1 scene (faster, cheaper test runs)",
     )
     parser.add_argument(
         "-v",
@@ -218,6 +233,10 @@ def main():
 
         from grok_spicy.pipeline import video_pipeline
 
+        # Prefect's import triggers dictConfig which clobbers our logger config;
+        # re-apply so our handlers and propagate=False survive.
+        setup_logging(verbose=args.verbose)
+
         # Print AFTER Prefect import so it appears below Prefect's
         # "Starting temporary server on http://127.0.0.1:XXXX" message.
         # That Prefect URL is NOT the dashboard — this one is.
@@ -238,6 +257,7 @@ def main():
                 concept,
                 observer=observer,
                 character_refs=character_refs,
+                debug=args.debug,
             )
             print(f"\nDone: {result}")
 
@@ -252,6 +272,10 @@ def main():
         # ─── Default: pipeline only ──────────────────────────
         from grok_spicy.pipeline import video_pipeline
 
+        # Prefect's import triggers dictConfig which clobbers our logger config;
+        # re-apply so our handlers and propagate=False survive.
+        setup_logging(verbose=args.verbose)
+
         for i, concept in enumerate(concepts, 1):
             if total > 1:
                 print(f"\n{'='*60}")
@@ -260,6 +284,7 @@ def main():
             result = video_pipeline(
                 concept,
                 character_refs=character_refs,
+                debug=args.debug,
             )
             print(f"\nDone: {result}")
 

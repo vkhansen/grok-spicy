@@ -72,10 +72,9 @@ def compose_keyframe(
     char_lines = []
     for i, c in enumerate(scene_chars[:2]):
         pos = ["left side", "right side"][i] if len(scene_chars) > 1 else "center"
-        brief = c.visual_description[:250]
         char_lines.append(
-            f"{c.name} from reference image {i + 1}: {brief}, "
-            f"positioned on the {pos}"
+            f"{c.name} from reference image {i + 1}: "
+            f"{c.visual_description}, positioned on the {pos}"
         )
 
     compose_prompt = (

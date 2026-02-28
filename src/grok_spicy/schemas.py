@@ -33,7 +33,15 @@ class Character(BaseModel):
 class Scene(BaseModel):
     scene_id: int
     title: str = Field(description="Brief scene title, 3-6 words")
-    description: str = Field(description="What happens in 2-3 sentences")
+    description: str = Field(
+        description=(
+            "Vivid, concept-faithful description of what happens in this scene "
+            "(2-3 sentences). This text is injected directly into image and video "
+            "generation prompts — make it rich and specific to the user's concept, "
+            "not generic. Include the key visual moment, character actions, and "
+            "environmental details that make this scene unique."
+        )
+    )
     characters_present: list[str] = Field(
         description="Character names (must match Character.name exactly)"
     )
