@@ -48,6 +48,8 @@ def setup_logging(log_dir: str = "output", verbose: bool = False) -> None:
     root.handlers.clear()
     root.addHandler(fh)
     root.addHandler(ch)
+    # Stop Prefect (or any parent logger) from duplicating our messages
+    root.propagate = False
 
     logging.getLogger("grok_spicy").info(
         "Logging initialised — file=%s (DEBUG), console (%s)",
