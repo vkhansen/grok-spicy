@@ -271,6 +271,7 @@ def test_run_detail_with_full_data(client):
                 camera="wide shot",
                 mood="mysterious",
                 action="Fox walks slowly",
+                prompt_summary="Fox walks slowly through enchanted forest.",
                 duration_seconds=6,
                 transition="cut",
             ),

@@ -154,6 +154,7 @@ def _make_scene(scene_id=1):
         camera="medium shot",
         mood="warm golden hour",
         action="Fox walks cautiously",
+        prompt_summary="Fox enters autumn forest cautiously through fallen leaves.",
         duration_seconds=8,
     )
 

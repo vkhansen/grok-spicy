@@ -55,6 +55,15 @@ class Scene(BaseModel):
     action: str = Field(
         description="Primary motion for video: 'fox leaps over a fallen log'"
     )
+    prompt_summary: str = Field(
+        description=(
+            "One concise sentence (max 30 words) distilling the scene's primary "
+            "action and visual focus, optimized for image/video generation prompts. "
+            "No character appearance details — just motion, composition, and key "
+            "visual beat. Example: 'Fox leaps over mossy log, landing in a spray "
+            "of golden leaves while owl watches from a gnarled branch.'"
+        )
+    )
     duration_seconds: int = Field(
         ge=3, le=15, description="Video duration, 8 is a good default"
     )

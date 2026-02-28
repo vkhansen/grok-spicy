@@ -41,6 +41,10 @@ SYSTEM_PROMPT = (
     "  • Lighting & mood (e.g., golden hour glow, harsh neon flicker, soft diffused morning light)\n"
     "  • Atmosphere & color notes (pull from derived palette)\n"
     "  • Optional subtle background/environmental motion (wind, rain, particles, flickering lights)\n"
+    "  • prompt_summary — ONE concise sentence (max 30 words) distilling the scene's core visual action. "
+    "This is fed directly into image/video generation prompts, so keep it tight and action-focused. "
+    "No character appearance, no setting details (those are injected separately). "
+    "Example: 'Fox leaps over mossy log, landing in a spray of golden leaves while owl watches from a gnarled branch.'\n"
     "- Sequence scenes logically to match any implied timeline in the concept.\n"
     "- Keep total characters per scene to 1–3 (max 4) to avoid visual clutter and consistency issues.\n\n"
 )

@@ -36,6 +36,7 @@ def _make_plan():
                 camera="wide",
                 mood="warm",
                 action="walks",
+                prompt_summary="Fox walks through the forest.",
                 duration_seconds=8,
             ),
         ],

@@ -35,6 +35,7 @@ def _make_plan() -> StoryPlan:
                 camera="medium shot, slow dolly forward",
                 mood="warm golden hour, soft shadows",
                 action="Fox walks cautiously through fallen leaves",
+                prompt_summary="Fox enters autumn forest through fallen leaves.",
                 duration_seconds=8,
             ),
         ],
@@ -120,6 +121,7 @@ def test_scene_duration_bounds():
         camera="wide",
         mood="warm",
         action="walks",
+        prompt_summary="Fox walks through the forest.",
         duration_seconds=8,
     )
     assert 3 <= scene.duration_seconds <= 15
