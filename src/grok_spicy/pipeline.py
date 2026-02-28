@@ -100,15 +100,15 @@ def _match_character_refs(
         ]
         from xai_sdk.chat import user
 
-        chat = client.chat.create(model=MODEL_STRUCTURED)
-        chat.append(
-            user(
-                f"Map these uploaded reference image labels to story characters.\n"
-                f"Uploaded labels: {list(unmatched_refs.keys())}\n"
-                f"Characters: {char_info}\n"
-                f"Return a mapping from each label to the best-matching character name."
-            )
+        ref_match_prompt = (
+            f"Map these uploaded reference image labels to story characters.\n"
+            f"Uploaded labels: {list(unmatched_refs.keys())}\n"
+            f"Characters: {char_info}\n"
+            f"Return a mapping from each label to the best-matching character name."
         )
+        logger.info("LLM ref-matching prompt: %s", ref_match_prompt)
+        chat = client.chat.create(model=MODEL_STRUCTURED)
+        chat.append(user(ref_match_prompt))
         _, result = chat.parse(CharacterRefMapping)
         for label, char_name in result.mapping.items():
             if label in unmatched_refs and char_name in unmatched_char_names:

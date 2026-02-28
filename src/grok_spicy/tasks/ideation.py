@@ -49,10 +49,9 @@ def plan_story(concept: str) -> StoryPlan:
     """Generate a structured StoryPlan from a concept string."""
     from xai_sdk.chat import system, user
 
-    logger.info(
-        "Ideation starting — model=%s, concept=%r", MODEL_STRUCTURED, concept[:120]
-    )
-    logger.debug("Full concept: %s", concept)
+    logger.info("Ideation starting — model=%s", MODEL_STRUCTURED)
+    logger.info("Ideation concept: %s", concept)
+    logger.info("Ideation system prompt: %s", SYSTEM_PROMPT)
 
     client = get_client()
     chat = client.chat.create(model=MODEL_STRUCTURED)

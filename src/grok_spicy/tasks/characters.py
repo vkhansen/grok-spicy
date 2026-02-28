@@ -72,7 +72,7 @@ def generate_character_sheet(
                 f"reference sheet style. Sharp details, even studio lighting, "
                 f"no background clutter, no text or labels."
             )
-            logger.debug("Stylize prompt (len=%d): %s", len(prompt), prompt[:200])
+            logger.info("Stylize prompt: %s", prompt)
             ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
             logger.debug("Encoded reference image to base64 data URI")
             img = client.image.sample(
@@ -91,7 +91,7 @@ def generate_character_sheet(
                 f"reference sheet style. Sharp details, even studio lighting, "
                 f"no background clutter, no text or labels."
             )
-            logger.debug("Generate prompt (len=%d): %s", len(prompt), prompt[:200])
+            logger.info("Generate prompt: %s", prompt)
             img = client.image.sample(
                 prompt=prompt,
                 model=MODEL_IMAGE,
@@ -105,16 +105,22 @@ def generate_character_sheet(
         )
 
         # Vision verify
-        logger.debug(
-            "Vision verify: model=%s, character=%r", MODEL_REASONING, character.name
+        vision_prompt = (
+            f"Score how well this portrait matches the description. "
+            f"Be strict on: hair color/style, eye color, clothing "
+            f"colors and style, build, distinguishing features.\n\n"
+            f"Description: {character.visual_description}"
+        )
+        logger.info(
+            "Vision verify prompt (model=%s, character=%r): %s",
+            MODEL_REASONING,
+            character.name,
+            vision_prompt,
         )
         chat = client.chat.create(model=MODEL_REASONING)
         chat.append(
             user(
-                f"Score how well this portrait matches the description. "
-                f"Be strict on: hair color/style, eye color, clothing "
-                f"colors and style, build, distinguishing features.\n\n"
-                f"Description: {character.visual_description}",
+                vision_prompt,
                 image(img.url),
             )
         )

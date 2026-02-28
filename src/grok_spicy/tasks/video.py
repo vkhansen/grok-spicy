@@ -52,7 +52,7 @@ def generate_scene_video(
         MODEL_VIDEO,
         RESOLUTION,
     )
-    logger.debug("Video prompt: %s", keyframe.video_prompt)
+    logger.info("Video prompt: %s", keyframe.video_prompt)
 
     client = get_client()
     corrections = 0
@@ -91,11 +91,17 @@ def generate_scene_video(
         len(scene_chars),
     )
 
+    vision_prompt = (
+        "Image 1 is a video's last frame. Images 2+ are character "
+        "refs. Has the character drifted? Score consistency."
+    )
+
     def _check_consistency() -> ConsistencyScore:
-        logger.debug(
-            "Scene %d: running consistency check (model=%s)",
+        logger.info(
+            "Scene %d consistency check (model=%s): %s",
             scene.scene_id,
             MODEL_REASONING,
+            vision_prompt,
         )
         chat = client.chat.create(model=MODEL_REASONING)
         imgs = [image(f"data:image/jpeg;base64,{to_base64(last_frame)}")]
@@ -103,8 +109,7 @@ def generate_scene_video(
             imgs.append(image(c.portrait_url))
         chat.append(
             user(
-                "Image 1 is a video's last frame. Images 2+ are character "
-                "refs. Has the character drifted? Score consistency.",
+                vision_prompt,
                 *imgs,
             )
         )
@@ -138,13 +143,13 @@ def generate_scene_video(
         corrections += 1
         fix = score.fix_prompt or f"Fix: {'; '.join(score.issues)}"
         logger.info(
-            "Scene %d correction %d/%d: score=%.2f < %.2f, applying fix — %s",
+            "Scene %d correction %d/%d: score=%.2f < %.2f, fix prompt: %s",
             scene.scene_id,
             corrections,
             MAX_VIDEO_CORRECTIONS,
             score.overall_score,
             CONSISTENCY_THRESHOLD,
-            fix[:120],
+            fix,
         )
 
         vid = client.video.generate(

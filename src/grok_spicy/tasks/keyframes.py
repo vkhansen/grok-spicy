@@ -87,9 +87,7 @@ def compose_keyframe(
         f"Color palette: {plan.color_palette}. "
         f"Maintain exact character appearances from the reference images."
     )
-    logger.debug(
-        "Compose prompt (len=%d): %s", len(compose_prompt), compose_prompt[:200]
-    )
+    logger.info("Compose prompt: %s", compose_prompt)
 
     # Motion-only video prompt for Step 5
     video_prompt = (
@@ -97,7 +95,7 @@ def compose_keyframe(
         f"{scene.mood}. {plan.style}. "
         f"Smooth cinematic motion."
     )
-    logger.debug("Video prompt: %s", video_prompt)
+    logger.info("Video prompt: %s", video_prompt)
 
     best: dict = {"score": 0.0, "url": "", "path": ""}
     fix_prompt = None
@@ -122,11 +120,11 @@ def compose_keyframe(
         else:
             # 3c: Targeted single-image edit
             logger.info(
-                "Scene %d iteration %d/%d: fix edit — %s",
+                "Scene %d iteration %d/%d: fix edit prompt: %s",
                 scene.scene_id,
                 iteration,
                 MAX_KEYFRAME_ITERS,
-                (fix_prompt or "")[:100],
+                fix_prompt or "",
             )
             img = client.image.sample(
                 prompt=fix_prompt,
@@ -140,11 +138,17 @@ def compose_keyframe(
         )
 
         # 3b: Vision consistency check
-        logger.debug(
-            "Scene %d vision check: model=%s, %d ref images",
+        vision_prompt = (
+            "Image 1 is a scene. Images 2+ are character references. "
+            "Score how well characters in the scene match their refs. "
+            "If issues, provide a surgical fix prompt."
+        )
+        logger.info(
+            "Scene %d vision check (model=%s, %d ref images): %s",
             scene.scene_id,
             MODEL_REASONING,
             len(scene_chars[:2]),
+            vision_prompt,
         )
         vision_imgs = [image(img.url)]
         for c in scene_chars[:2]:
@@ -153,9 +157,7 @@ def compose_keyframe(
         chat = client.chat.create(model=MODEL_REASONING)
         chat.append(
             user(
-                "Image 1 is a scene. Images 2+ are character references. "
-                "Score how well characters in the scene match their refs. "
-                "If issues, provide a surgical fix prompt.",
+                vision_prompt,
                 *vision_imgs,
             )
         )
@@ -197,7 +199,7 @@ def compose_keyframe(
             f"Fix ONLY these issues, keep everything else identical: "
             f"{'; '.join(score.issues)}"
         )
-        logger.debug("Scene %d fix prompt: %s", scene.scene_id, fix_prompt[:150])
+        logger.info("Scene %d fix prompt: %s", scene.scene_id, fix_prompt)
     else:
         logger.warning(
             "Scene %d exhausted all %d iterations, using best score=%.2f",
