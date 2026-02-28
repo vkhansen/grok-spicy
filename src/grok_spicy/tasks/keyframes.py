@@ -80,6 +80,7 @@ def compose_keyframe(
 
     compose_prompt = (
         f"{plan.style}. "
+        f"Scene: {scene.title} — {scene.description} "
         f"Setting: {scene.setting}. {scene.mood}. "
         f"{'. '.join(char_lines)}. "
         f"Action: {scene.action}. "
@@ -89,8 +90,9 @@ def compose_keyframe(
     )
     logger.info("Compose prompt: %s", compose_prompt)
 
-    # Motion-only video prompt for Step 5
+    # Video prompt for Step 5 — scene context + motion
     video_prompt = (
+        f"{scene.description} "
         f"{scene.camera}. {scene.action}. "
         f"{scene.mood}. {plan.style}. "
         f"Smooth cinematic motion."
