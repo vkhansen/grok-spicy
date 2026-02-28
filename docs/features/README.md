@@ -20,6 +20,7 @@ Build order for the Grok Spicy video pipeline. Each card is a self-contained uni
 09 Video Assembly ◄── 08
 10 Prefect Orchestration ◄── 04-09
 11 CLI Entry Point ◄── 10
+12 SQLite + Dashboard ◄── 02, 10, 11
 ```
 
 ## Build Order
@@ -37,6 +38,7 @@ Build order for the Grok Spicy video pipeline. Each card is a self-contained uni
 | 09 | [Video Assembly](09-video-assembly.md) | Core | Step 6 — FFmpeg normalize + concat |
 | 10 | [Prefect Orchestration](10-prefect-orchestration.md) | Integration | Main flow wiring, parallelism, state |
 | 11 | [CLI Entry Point](11-cli-entry-point.md) | Polish | Command-line interface |
+| 12 | [SQLite + Dashboard](Feature-plan-frontend.md) | Polish | SQLite DB, FastAPI, live htmx dashboard |
 
 ## Suggested implementation phases
 
@@ -45,3 +47,5 @@ Build order for the Grok Spicy video pipeline. Each card is a self-contained uni
 **Phase 2 — Core Pipeline (Cards 04–09):** Build each step independently, test each in isolation. This is the bulk of the work.
 
 **Phase 3 — Integration (Cards 10–11):** Wire everything together, add CLI. First end-to-end run.
+
+**Phase 4 — Observability (Card 12):** SQLite persistence, FastAPI server, live-reloading htmx dashboard.
