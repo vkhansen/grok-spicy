@@ -68,13 +68,13 @@ def compose_keyframe(
         len(ref_urls),
     )
 
-    # Build composition prompt
+    # Build composition prompt — character appearance comes from the reference
+    # images passed via image_urls, so we only need name + position here.
     char_lines = []
     for i, c in enumerate(scene_chars[:2]):
         pos = ["left side", "right side"][i] if len(scene_chars) > 1 else "center"
         char_lines.append(
-            f"{c.name} from reference image {i + 1}: "
-            f"{c.visual_description}, positioned on the {pos}"
+            f"{c.name} (reference image {i + 1}), positioned on the {pos}"
         )
 
     compose_prompt = (
