@@ -54,20 +54,48 @@ def get_client():
 # ─── Download helper ─────────────────────────────────────────
 
 
+DOWNLOAD_TIMEOUT = (10, 60)  # (connect, read) seconds
+DOWNLOAD_RETRIES = 3
+
+
 def download(url: str, path: str) -> str:
     """Download a URL to a local file. Returns the path.
 
     Critical: Grok image/video URLs are temporary — call immediately.
+    Retries up to DOWNLOAD_RETRIES times on timeout or connection errors.
     """
+    import time
+
     logger.debug("Downloading %s → %s", url[:80], path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    r = requests.get(url)
-    r.raise_for_status()
-    with open(path, "wb") as f:
-        f.write(r.content)
-    size_kb = len(r.content) / 1024
-    logger.info("Downloaded %.1f KB → %s", size_kb, path)
-    return path
+
+    last_exc: Exception | None = None
+    for attempt in range(1, DOWNLOAD_RETRIES + 1):
+        try:
+            r = requests.get(url, timeout=DOWNLOAD_TIMEOUT)
+            r.raise_for_status()
+            with open(path, "wb") as f:
+                f.write(r.content)
+            size_kb = len(r.content) / 1024
+            logger.info("Downloaded %.1f KB → %s", size_kb, path)
+            return path
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+        ) as exc:
+            last_exc = exc
+            logger.warning(
+                "Download attempt %d/%d failed (%s): %s",
+                attempt,
+                DOWNLOAD_RETRIES,
+                type(exc).__name__,
+                url[:80],
+            )
+            if attempt < DOWNLOAD_RETRIES:
+                time.sleep(2 * attempt)
+    raise RuntimeError(
+        f"Download failed after {DOWNLOAD_RETRIES} attempts: {url[:80]}"
+    ) from last_exc
 
 
 # ─── Base64 helper ───────────────────────────────────────────
