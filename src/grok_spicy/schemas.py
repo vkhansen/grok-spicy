@@ -35,11 +35,11 @@ class Scene(BaseModel):
     title: str = Field(description="Brief scene title, 3-6 words")
     description: str = Field(
         description=(
-            "Vivid, concept-faithful description of what happens in this scene "
-            "(2-3 sentences). This text is injected directly into image and video "
-            "generation prompts — make it rich and specific to the user's concept, "
-            "not generic. Include the key visual moment, character actions, and "
-            "environmental details that make this scene unique."
+            "What happens in this scene (2-3 sentences of pure narrative). "
+            "Focus on events, actions, character emotions, and story progression. "
+            "Do NOT describe character appearance here (that is handled by visual_description). "
+            "Example: 'Luna discovers the hidden map behind the bookshelf and traces the route "
+            "with trembling fingers while Kai watches nervously from the doorway.'"
         )
     )
     characters_present: list[str] = Field(

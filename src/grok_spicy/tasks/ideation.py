@@ -23,18 +23,15 @@ SYSTEM_PROMPT = (
     "- If the concept gives no strong style cues, default to clean, modern cinematic realism unless tone clearly suggests otherwise.\n\n"
 
     "Character Handling – Consistency is Critical:\n"
-    "- If the user provides pre-written reference descriptions (e.g., in a 'reference' or 'character sheet' section), copy them **verbatim** into the 'visual_description' field for every appearance of that character. Do not paraphrase or shorten.\n"
-    "- If no reference exists for a character, create one exhaustive, consistent visual bible description (minimum 100 words) that includes:\n"
-    "  • Age range & perceived age\n"
-    "  • Gender & presentation\n"
-    "  • Ethnicity/skin tone\n"
-    "  • Hair (color, texture, length, style)\n"
-    "  • Eye color & shape\n"
-    "  • Facial features (face shape, expressions, distinguishing marks like scars/freckles/glasses)\n"
-    "  • Body build & proportions\n"
-    "  • Exact clothing/outfit (colors, materials, fit, accessories, footwear)\n"
-    "  • Any signature items, posture/gait, or recurring visual motifs\n"
-    "This description becomes the **sole canonical reference** for all image/video generation — repeat key phrases exactly in every scene prompt to enforce consistency.\n\n"
+    "- If the user provides reference descriptions, copy them **verbatim** into visual_description. Do not paraphrase.\n"
+    "- If no reference exists, create a consistent visual description (include age, gender, ethnicity, hair, eyes, facial features, build, clothing, distinguishing marks).\n"
+    "- visual_description is handled separately — NEVER repeat it in scene descriptions.\n\n"
+
+    "Story & Narrative Focus:\n"
+    "- Scene descriptions are about EVENTS, ACTIONS, and EMOTIONS — not character appearance.\n"
+    "- Never repeat character visual details in scene descriptions (those are injected separately in downstream prompts).\n"
+    "- Each scene description should answer: What happens? What changes? What do characters DO and FEEL?\n"
+    "- Use vivid action verbs and concrete narrative beats, not poses or outfit descriptions.\n\n"
 
     "Scene & Video Structure Rules:\n"
     "- Limit total scenes to 3–6 (ideally 4–5) to maintain quality and coherence in short videos.\n"
@@ -88,7 +85,11 @@ def plan_story(
             f"\n\nThe following visual descriptions were extracted from the "
             f"user's reference photos. Copy each one verbatim into the "
             f"visual_description field for the corresponding character:\n"
-            f"{desc_block}"
+            f"{desc_block}\n\n"
+            f"IMPORTANT: Character appearance is already fully defined above. "
+            f"Your scene descriptions must focus ENTIRELY on narrative events, "
+            f"actions, emotions, and story progression — do NOT describe what "
+            f"characters look like in scene text."
         )
         logger.debug("Ideation user message with ref descriptions: %s", user_message)
 
