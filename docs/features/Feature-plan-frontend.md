@@ -18,37 +18,35 @@ This card delivers three layers:
 
 The design uses an **observer pattern** so the existing CLI-only pipeline is untouched. A `NullObserver` (default) drops all events; a `WebObserver` writes to SQLite and pushes SSE events.
 
+Additionally, the dashboard adds **pre-run user input** — instead of just watching a fully autonomous run, the user can upload reference images (photos of real people, character art, faces) before launch. These reference images are fed into the character sheet generation step, so the pipeline produces characters that look like the uploaded faces.
+
 ## Architecture Overview
 
 ```
-                     ┌────────────────────────────────┐
-                     │     video_pipeline() flow       │
-                     │                                 │
-                     │  plan_story ──► observer.on_plan│
-                     │  gen_char   ──► observer.on_char│
-                     │  keyframe   ──► observer.on_kf  │
-                     │  ...        ──► observer.on_*   │
-                     └──────────────┬─────────────────┘
-                                    │ PipelineObserver
-                        ┌───────────┴───────────┐
-                        ▼                       ▼
-                  NullObserver            WebObserver
-                  (no-op, CLI)         ┌─────────────┐
-                                       │  SQLite DB   │
-                                       │  EventBus    │
+                                       ┌─────────────┐
+                                       │   Browser    │
+                                       │  "New Run"   │
+                                       │  form +      │
+                                       │  image upload │
                                        └──────┬──────┘
-                                              │ SSE
+                                              │ POST /api/runs
+                                              │ (concept + ref images)
                                        ┌──────▼──────┐
                                        │  FastAPI app │
-                                       │  /api/*      │
-                                       │  /sse        │
-                                       │  / (HTML)    │
-                                       └──────┬──────┘
-                                              │
-                                       ┌──────▼──────┐
-                                       │   Browser    │
-                                       │ htmx + SSE   │
-                                       └─────────────┘
+                                       │  saves refs  │
+                                       │  to disk     │
+                     ┌─────────────────┤  starts run  │
+                     │                 └──────┬──────┘
+                     ▼                        │ SSE
+           ┌────────────────────────┐         │
+           │  video_pipeline() flow │    ┌────▼────┐
+           │                        │    │ Browser  │
+           │  plan_story            │    │ watches  │
+           │  gen_char (uses refs) ─┼──► │ live via │
+           │  keyframe              │    │ htmx+SSE │
+           │  ...                   │    └─────────┘
+           │  observer.on_*() ──────┼──► WebObserver ──► SQLite + EventBus
+           └────────────────────────┘
 ```
 
 ---
@@ -57,7 +55,7 @@ The design uses an **observer pattern** so the existing CLI-only pipeline is unt
 
 ### 1. SQLite Schema — `src/grok_spicy/db.py`
 
-Six tables mirroring the Pydantic models in `schemas.py`, plus a top-level `runs` table:
+Seven tables mirroring the Pydantic models in `schemas.py`, plus a top-level `runs` table and a `reference_images` table for user-uploaded character photos:
 
 ```sql
 CREATE TABLE runs (
@@ -96,6 +94,15 @@ CREATE TABLE scenes (
     action              TEXT NOT NULL,
     duration_seconds    INTEGER NOT NULL,
     transition          TEXT NOT NULL DEFAULT 'cut'
+);
+
+CREATE TABLE reference_images (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          INTEGER NOT NULL REFERENCES runs(id),
+    character_name  TEXT NOT NULL,       -- mapped to Character.name after ideation
+    original_filename TEXT NOT NULL,     -- user's upload filename
+    stored_path     TEXT NOT NULL,       -- output/references/{run_id}_{name}.jpg
+    uploaded_at     TEXT NOT NULL        -- ISO-8601
 );
 
 CREATE TABLE character_assets (
@@ -169,6 +176,8 @@ CREATE TABLE video_assets (
 | `upsert_character_asset` | `(conn, run_id: int, asset: CharacterAsset) -> None` | Insert or replace by (run_id, name) |
 | `upsert_keyframe_asset` | `(conn, run_id: int, asset: KeyframeAsset) -> None` | Insert or replace by (run_id, scene_id) |
 | `upsert_video_asset` | `(conn, run_id: int, asset: VideoAsset) -> None` | Insert or replace by (run_id, scene_id) |
+| `insert_reference_image` | `(conn, run_id: int, char_name: str, filename: str, path: str) -> None` | Store uploaded ref image metadata |
+| `get_reference_images` | `(conn, run_id: int) -> dict[str, str]` | Return `{character_name: stored_path}` map |
 | `get_run` | `(conn, run_id: int) -> dict` | Full run with nested characters, scenes, assets |
 | `list_runs` | `(conn) -> list[dict]` | Summary list for dashboard index |
 
@@ -298,13 +307,15 @@ class EventBus:
 
 ### 4. FastAPI App — `src/grok_spicy/web.py`
 
-A single-file FastAPI application with 6 routes:
+A single-file FastAPI application:
 
 | Route | Method | Response | Purpose |
 |---|---|---|---|
 | `/` | GET | HTML | Dashboard index — list of all runs |
+| `/new` | GET | HTML | New run form with concept + image upload |
 | `/run/{run_id}` | GET | HTML | Single run detail page |
 | `/api/runs` | GET | JSON | List all runs (summary) |
+| `/api/runs` | POST | Redirect | Create run, save ref images, start pipeline |
 | `/api/runs/{run_id}` | GET | JSON | Full run detail with nested assets |
 | `/sse/{run_id}` | GET | SSE stream | Live event stream for a specific run |
 | `/output/{path:path}` | GET | File | Static file serving for images/videos |
@@ -381,7 +392,8 @@ Templates live in `src/grok_spicy/templates/`:
 ```
 templates/
 ├── base.html       # Layout shell, htmx + SSE script tags
-├── index.html      # Run list
+├── index.html      # Run list + "New Run" link
+├── new_run.html    # Concept input + character reference image upload
 └── run.html        # Single run detail (live-updating)
 ```
 
@@ -425,6 +437,9 @@ templates/
 {% block title %}Grok Spicy — Runs{% endblock %}
 {% block content %}
 <h1>Grok Spicy — Pipeline Runs</h1>
+<a href="/new" class="card" style="display: inline-block; text-decoration: none; color: var(--accent); margin-bottom: 1rem; font-weight: bold;">
+    + New Run
+</a>
 <div class="grid">
     {% for run in runs %}
     <a href="/run/{{ run.id }}" class="card" style="text-decoration: none; color: inherit;">
@@ -514,23 +529,302 @@ templates/
 
 **Zero npm/build requirement:** htmx and htmx-ext-sse are loaded from CDN `<script>` tags. All CSS is inline in `base.html`. No node_modules, no bundler, no build step.
 
-### 6. CLI Integration — `src/grok_spicy/__main__.py`
+### 6. Reference Image Upload — Pre-Run Character Input
 
-Two new flags added to the existing argument parser:
+The pipeline is currently fully autonomous after the initial concept string. This section adds a way for users to provide reference photos (real people, character art, face shots) that get used as the basis for character sheets.
+
+#### How it works end-to-end
+
+```
+1. User opens dashboard → clicks "New Run"
+2. Enters concept text + optionally uploads images with label names
+   (e.g., "Alex" → photo of a friend, "Maya" → photo of an actor)
+3. POST /api/runs → saves images to output/references/{run_id}_{name}.jpg
+4. Pipeline starts → Step 1 (ideation) produces a StoryPlan
+5. Character name matching: map uploaded names to StoryPlan character names
+   - Exact match: "Alex" → Character(name="Alex")
+   - Fuzzy/LLM match: ask Grok to map uploaded labels to generated names
+     (e.g., user uploaded "the hero" → Grok maps to Character(name="Marcus"))
+6. Step 2 (character sheets): for characters WITH a reference image,
+   REPLACE the text-to-image generation with a stylization edit
+7. Characters WITHOUT references: generate from scratch as before
+```
+
+#### Character name matching strategy
+
+The user uploads images before ideation runs, so their label names won't necessarily match the character names Grok invents. Two-phase matching:
+
+1. **Hint injection into ideation prompt** — append to the Step 1 prompt:
+   ```
+   The user has provided reference images for these characters: Alex, Maya.
+   Use these exact names for the corresponding characters in your story.
+   ```
+   This makes Grok use the uploaded names directly in most cases.
+
+2. **Fallback LLM matching** — if names don't match exactly (user uploaded "hero" but Grok named the character "Marcus"), do a quick `chat.parse()` call:
+   ```
+   Map these uploaded reference labels to story characters.
+   Uploaded: ["hero", "villain"]
+   Characters: [{"name": "Marcus", "role": "protagonist"}, {"name": "Zara", "role": "antagonist"}]
+   Return a mapping: {"hero": "Marcus", "villain": "Zara"}
+   ```
+
+#### Modified Step 2: `generate_character_sheet` with reference images
+
+When a character has a reference image, the generation loop changes:
+
+```python
+@task(name="generate-character-sheet", retries=2, retry_delay_seconds=15)
+def generate_character_sheet(
+    character: Character,
+    style: str,
+    aspect_ratio: str,
+    reference_image_path: str | None = None,  # NEW optional param
+) -> CharacterAsset:
+
+    if reference_image_path:
+        # STYLIZE MODE: edit the reference photo into the art style
+        # instead of generating from scratch
+        prompt = (
+            f"{style}. Transform this photo into a full body character "
+            f"portrait while preserving the person's exact facial features, "
+            f"face shape, and likeness. {character.visual_description}. "
+            f"Standing in a neutral three-quarter pose against a plain "
+            f"light gray background. Professional character design "
+            f"reference sheet style."
+        )
+        img = client.image.sample(
+            prompt=prompt,
+            model=MODEL_IMAGE,
+            image_url=reference_image_path,  # single-image edit
+            aspect_ratio=aspect_ratio,
+        )
+        # Vision verify still runs to check the result
+        # Retry loop still applies — re-edit if score < threshold
+    else:
+        # GENERATE MODE: existing text-to-image flow (unchanged)
+        ...
+```
+
+**Key design decisions:**
+
+- Uses `image_url` (single-image edit) to stylize the reference — this tells Grok "transform this image" rather than "generate from nothing"
+- The `visual_description` from ideation is still included in the prompt to guide clothing, pose, and style — but the **face/likeness comes from the reference photo**
+- The vision verification loop still runs, comparing the result against both the reference photo and the text description
+- If the stylized result scores below threshold, the retry re-edits from the reference (not from the failed attempt), preserving likeness
+- `reference_image_path` is a local file path, not a URL — the dashboard saves uploads to disk
+
+#### Dashboard "New Run" form — `src/grok_spicy/templates/new_run.html`
+
+```html
+{% extends "base.html" %}
+{% block title %}New Run — Grok Spicy{% endblock %}
+{% block content %}
+<h1>New Pipeline Run</h1>
+
+<form action="/api/runs" method="POST" enctype="multipart/form-data"
+      style="max-width: 600px;">
+
+    <label for="concept">Story Concept</label>
+    <textarea name="concept" id="concept" rows="3"
+              placeholder="A curious fox meets a wise owl in an enchanted forest"
+              style="width: 100%; padding: 0.5rem; margin-bottom: 1rem;
+                     background: var(--card); color: var(--fg); border: 1px solid #333;
+                     border-radius: 4px; font-size: 1rem;"
+              required></textarea>
+
+    <h2>Character References (optional)</h2>
+    <p style="opacity: 0.7; margin-bottom: 1rem;">
+        Upload photos of real people or character art. Name each one —
+        the pipeline will use these faces when generating character sheets.
+    </p>
+
+    <div id="ref-slots">
+        <div class="ref-slot card" style="margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: center;">
+            <input type="text" name="ref_name_1" placeholder="Character name (e.g., Alex)"
+                   style="flex: 1; padding: 0.4rem; background: var(--bg); color: var(--fg); border: 1px solid #333; border-radius: 4px;">
+            <input type="file" name="ref_image_1" accept="image/*"
+                   style="flex: 1;">
+        </div>
+        <div class="ref-slot card" style="margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: center;">
+            <input type="text" name="ref_name_2" placeholder="Character name (e.g., Maya)"
+                   style="flex: 1; padding: 0.4rem; background: var(--bg); color: var(--fg); border: 1px solid #333; border-radius: 4px;">
+            <input type="file" name="ref_image_2" accept="image/*"
+                   style="flex: 1;">
+        </div>
+    </div>
+
+    <button type="submit"
+            style="margin-top: 1rem; padding: 0.6rem 2rem; background: var(--accent);
+                   color: #000; border: none; border-radius: 4px; font-size: 1rem;
+                   cursor: pointer; font-weight: bold;">
+        Launch Pipeline
+    </button>
+</form>
+{% endblock %}
+```
+
+Two upload slots by default (matching the pipeline's max-2-characters-per-scene constraint). Both are optional — submitting with no images gives the same fully-autonomous behavior as before.
+
+#### New API endpoint — `POST /api/runs`
+
+```python
+@app.post("/api/runs")
+async def create_run(
+    concept: str = Form(...),
+    ref_name_1: str | None = Form(None),
+    ref_image_1: UploadFile | None = File(None),
+    ref_name_2: str | None = Form(None),
+    ref_image_2: UploadFile | None = File(None),
+):
+    conn = get_db()
+    run_id = insert_run(conn, concept)
+
+    # Save uploaded reference images
+    ref_map: dict[str, str] = {}
+    for name, upload in [(ref_name_1, ref_image_1), (ref_name_2, ref_image_2)]:
+        if name and upload and upload.filename:
+            safe_name = name.strip().replace(" ", "_")
+            path = f"output/references/{run_id}_{safe_name}.jpg"
+            os.makedirs("output/references", exist_ok=True)
+            content = await upload.read()
+            with open(path, "wb") as f:
+                f.write(content)
+            insert_reference_image(conn, run_id, name.strip(), upload.filename, path)
+            ref_map[name.strip()] = path
+
+    # Start pipeline in background thread
+    observer = WebObserver(conn, event_bus)
+    threading.Thread(
+        target=_run_pipeline,
+        args=(concept, observer, ref_map),
+        daemon=True,
+    ).start()
+
+    # Redirect to the live run page
+    return RedirectResponse(f"/run/{run_id}", status_code=303)
+```
+
+#### Updated routes table
+
+| Route | Method | Response | Purpose |
+|---|---|---|---|
+| `/` | GET | HTML | Dashboard index — list of all runs |
+| `/new` | GET | HTML | New run form with concept + image upload |
+| `/run/{run_id}` | GET | HTML | Single run detail page |
+| `/api/runs` | GET | JSON | List all runs (summary) |
+| `/api/runs` | POST | Redirect | Create run, save ref images, start pipeline |
+| `/api/runs/{run_id}` | GET | JSON | Full run detail with nested assets |
+| `/sse/{run_id}` | GET | SSE stream | Live event stream for a specific run |
+| `/output/{path:path}` | GET | File | Static file serving for images/videos |
+
+#### Pipeline integration for reference images
+
+The `video_pipeline()` flow gains a second optional parameter:
+
+```python
+@flow(name="grok-video-pipeline", retries=1,
+      retry_delay_seconds=60, log_prints=True)
+def video_pipeline(
+    concept: str,
+    observer: PipelineObserver | None = None,
+    character_refs: dict[str, str] | None = None,  # {"Alex": "path/to/photo.jpg"}
+) -> str:
+    if observer is None:
+        observer = NullObserver()
+    if character_refs is None:
+        character_refs = {}
+
+    run_id = observer.on_run_start(concept)
+
+    # Step 1: Ideation — inject reference names as hints
+    ref_hint = ""
+    if character_refs:
+        names = ", ".join(character_refs.keys())
+        ref_hint = (
+            f"\nThe user has provided reference images for these characters: "
+            f"{names}. Use these exact names for the corresponding characters."
+        )
+    plan = plan_story(concept + ref_hint)
+    observer.on_plan(run_id, plan)
+
+    # Match uploaded names → generated character names
+    matched_refs = _match_character_refs(character_refs, plan.characters)
+
+    # Step 2: Character sheets — pass reference path if available
+    char_futures = [
+        generate_character_sheet.submit(
+            c, plan.style, plan.aspect_ratio,
+            reference_image_path=matched_refs.get(c.name),
+        )
+        for c in plan.characters
+    ]
+    # ... rest unchanged ...
+```
+
+#### CLI support for reference images
+
+```
+--ref NAME=PATH     Map a character reference image (repeatable)
+```
+
+```bash
+# Upload two reference photos from CLI
+python -m grok_spicy "A spy thriller in Tokyo" \
+    --ref "Alex=photos/alex.jpg" \
+    --ref "Maya=photos/maya.jpg" \
+    --serve
+```
+
+Parsed with `action="append"`:
+```python
+parser.add_argument(
+    "--ref", action="append", default=[],
+    metavar="NAME=PATH",
+    help="Character reference image: NAME=PATH (repeatable)"
+)
+
+# Parse into dict
+character_refs = {}
+for ref in args.ref:
+    name, _, path = ref.partition("=")
+    if not path or not os.path.isfile(path):
+        print(f"Warning: reference image not found: {path}")
+        continue
+    # Copy to output/references/ so pipeline can find it
+    dest = f"output/references/{name.strip().replace(' ', '_')}.jpg"
+    os.makedirs("output/references", exist_ok=True)
+    shutil.copy2(path, dest)
+    character_refs[name.strip()] = dest
+```
+
+#### File output for reference images
+
+```
+output/references/{run_id}_{name}.jpg    # Dashboard uploads (web mode)
+output/references/{name}.jpg             # CLI uploads (--ref mode)
+```
+
+### 7. CLI Integration — `src/grok_spicy/__main__.py`
+
+New flags added to the existing argument parser:
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--serve` | flag | `False` | Start the dashboard server alongside the pipeline |
 | `--web` | flag | `False` | Start the dashboard server only (browse past runs) |
 | `--port` | int | `8420` | Port for the dashboard server |
+| `--ref` | `NAME=PATH` | `[]` | Character reference image (repeatable) |
 
 **Behavior matrix:**
 
-| Command | Pipeline | Server |
-|---|---|---|
-| `python -m grok_spicy "concept"` | runs | no |
-| `python -m grok_spicy "concept" --serve` | runs | starts in background thread |
-| `python -m grok_spicy --web` | no | runs as main process |
+| Command | Pipeline | Server | Refs |
+|---|---|---|---|
+| `python -m grok_spicy "concept"` | runs | no | none |
+| `python -m grok_spicy "concept" --ref "Alex=photo.jpg"` | runs | no | CLI refs |
+| `python -m grok_spicy "concept" --serve` | runs | background thread | none |
+| `python -m grok_spicy "concept" --serve --ref "Alex=photo.jpg"` | runs | background thread | CLI refs |
+| `python -m grok_spicy --web` | no (launch from dashboard) | main process | upload via form |
 
 **`--serve` mode:**
 
@@ -612,6 +906,7 @@ Install with `pip install -e ".[web]"`. The core pipeline has **zero new depende
 | `src/grok_spicy/web.py` | FastAPI app (routes, SSE endpoint, static files) |
 | `src/grok_spicy/templates/base.html` | Layout shell with htmx + dark theme CSS |
 | `src/grok_spicy/templates/index.html` | Run list page |
+| `src/grok_spicy/templates/new_run.html` | New run form with concept + reference image upload |
 | `src/grok_spicy/templates/run.html` | Live-updating run detail page |
 | `docs/features/Feature-plan-frontend.md` | This feature card |
 
@@ -619,15 +914,17 @@ Install with `pip install -e ".[web]"`. The core pipeline has **zero new depende
 
 | File | Change |
 |---|---|
-| `src/grok_spicy/pipeline.py` | Add optional `observer` parameter, call observer methods at each step boundary |
-| `src/grok_spicy/__main__.py` | Add `--serve`, `--web`, `--port` flags |
+| `src/grok_spicy/pipeline.py` | Add optional `observer` and `character_refs` parameters, call observer methods at each step boundary |
+| `src/grok_spicy/tasks/characters.py` | Add optional `reference_image_path` parameter — stylize mode when ref provided |
+| `src/grok_spicy/__main__.py` | Add `--serve`, `--web`, `--port`, `--ref` flags |
 | `pyproject.toml` | Add `[project.optional-dependencies] web = [...]` |
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] SQLite schema has tables for runs, characters, scenes, character_assets, keyframe_assets, video_assets
+### Database & Observer
+- [ ] SQLite schema has tables for runs, characters, scenes, reference_images, character_assets, keyframe_assets, video_assets
 - [ ] All fields from `schemas.py` models are represented in the schema
 - [ ] `init_db()` creates tables idempotently (IF NOT EXISTS)
 - [ ] WAL mode enabled for concurrent read/write
@@ -636,14 +933,31 @@ Install with `pip install -e ".[web]"`. The core pipeline has **zero new depende
 - [ ] `WebObserver` writes to SQLite and pushes events to `EventBus`
 - [ ] Observer errors are caught and logged, never crash the pipeline
 - [ ] `EventBus` is thread-safe — sync `publish()` from pipeline thread, async `subscribe()` for SSE
-- [ ] FastAPI serves HTML pages at `/` and `/run/{run_id}`
-- [ ] JSON API at `/api/runs` and `/api/runs/{run_id}`
+
+### Dashboard & API
+- [ ] FastAPI serves HTML pages at `/`, `/new`, and `/run/{run_id}`
+- [ ] JSON API at `GET /api/runs` and `GET /api/runs/{run_id}`
+- [ ] `POST /api/runs` accepts concept + multipart image uploads, creates run, starts pipeline
 - [ ] SSE stream at `/sse/{run_id}` delivers live events
 - [ ] Static files served from `/output/` for images and videos
 - [ ] htmx live-swaps new character/keyframe/video cards as they're generated
 - [ ] Video elements autoplay and loop
+
+### Reference Image Upload
+- [ ] Dashboard "New Run" form has concept textarea + 2 optional image upload slots with name fields
+- [ ] Uploaded images saved to `output/references/` and recorded in `reference_images` table
+- [ ] Uploaded character names are injected as hints into the ideation prompt
+- [ ] Fallback LLM matching maps uploaded labels to generated character names if exact match fails
+- [ ] `generate_character_sheet` uses single-image edit (stylize mode) when reference image is provided
+- [ ] Characters without reference images still generate from scratch (unchanged behavior)
+- [ ] Vision verification loop still runs on stylized results
+- [ ] `--ref NAME=PATH` CLI flag works for headless reference image input
+- [ ] Pipeline with no reference images behaves identically to current behavior (no regression)
+
+### CLI & Build
 - [ ] `--serve` starts server in background thread alongside pipeline
-- [ ] `--web` starts server as standalone process
+- [ ] `--web` starts server as standalone process (with "New Run" form for launching runs)
+- [ ] `--ref` flag accepts `NAME=PATH` pairs, repeatable
 - [ ] No npm, no build step — htmx loaded from CDN, CSS inline
 - [ ] FastAPI/uvicorn/Jinja2 only imported when `--serve` or `--web` is used
 - [ ] Core pipeline has zero new runtime dependencies

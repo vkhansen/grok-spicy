@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Grok Spicy — Runs{% endblock %}
+{% block content %}
+<h1>Pipeline Runs</h1>
+{% if runs %}
+<div class="grid">
+    {% for run in runs %}
+    <a href="/run/{{ run.id }}" class="card" style="text-decoration: none; color: inherit;">
+        <h3>{{ run.title or run.concept[:50] }}</h3>
+        <span class="status status-{{ 'complete' if run.status == 'complete' else 'running' if run.status not in ('failed', 'complete', 'pending') else run.status }}">
+            {{ run.status }}
+        </span>
+        <p style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.7;">{{ run.started_at[:19] }}</p>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p style="margin-top: 1rem; opacity: 0.7;">No runs yet. <a href="/new">Start one.</a></p>
+{% endif %}
+{% endblock %}

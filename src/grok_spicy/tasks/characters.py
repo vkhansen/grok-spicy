@@ -17,12 +17,18 @@ from grok_spicy.schemas import Character, CharacterAsset, ConsistencyScore
 
 @task(name="generate-character-sheet", retries=2, retry_delay_seconds=15)
 def generate_character_sheet(
-    character: Character, style: str, aspect_ratio: str
+    character: Character,
+    style: str,
+    aspect_ratio: str,
+    reference_image_path: str | None = None,
 ) -> CharacterAsset:
     """Generate a verified character reference portrait.
 
-    Loop: generate portrait → vision verify → retry if score < threshold.
+    Loop: generate portrait -> vision verify -> retry if score < threshold.
     Keeps the best result across all attempts.
+
+    If reference_image_path is provided, uses single-image edit (stylize mode)
+    to transform the reference photo into the art style while preserving likeness.
     """
     from xai_sdk.chat import image, user
 
@@ -31,26 +37,45 @@ def generate_character_sheet(
     attempt = 0
 
     for attempt in range(1, MAX_CHAR_ATTEMPTS + 1):
-        # 2a: Generate portrait
-        prompt = (
-            f"{style}. Full body character portrait of "
-            f"{character.visual_description}. "
-            f"Standing in a neutral three-quarter pose against a plain "
-            f"light gray background. Professional character design "
-            f"reference sheet style. Sharp details, even studio lighting, "
-            f"no background clutter, no text or labels."
-        )
-        img = client.image.sample(
-            prompt=prompt,
-            model=MODEL_IMAGE,
-            aspect_ratio=aspect_ratio,
-        )
+        if reference_image_path:
+            # STYLIZE MODE: edit the reference photo into the art style
+            prompt = (
+                f"{style}. Transform this photo into a full body character "
+                f"portrait while preserving the person's exact facial features, "
+                f"face shape, and likeness. {character.visual_description}. "
+                f"Standing in a neutral three-quarter pose against a plain "
+                f"light gray background. Professional character design "
+                f"reference sheet style. Sharp details, even studio lighting, "
+                f"no background clutter, no text or labels."
+            )
+            img = client.image.sample(
+                prompt=prompt,
+                model=MODEL_IMAGE,
+                image_url=reference_image_path,
+                aspect_ratio=aspect_ratio,
+            )
+        else:
+            # GENERATE MODE: text-to-image from scratch
+            prompt = (
+                f"{style}. Full body character portrait of "
+                f"{character.visual_description}. "
+                f"Standing in a neutral three-quarter pose against a plain "
+                f"light gray background. Professional character design "
+                f"reference sheet style. Sharp details, even studio lighting, "
+                f"no background clutter, no text or labels."
+            )
+            img = client.image.sample(
+                prompt=prompt,
+                model=MODEL_IMAGE,
+                aspect_ratio=aspect_ratio,
+            )
+
         path = download(
             img.url,
             f"output/character_sheets/{character.name}_v{attempt}.jpg",
         )
 
-        # 2b: Vision verify
+        # Vision verify
         chat = client.chat.create(model=MODEL_REASONING)
         chat.append(
             user(

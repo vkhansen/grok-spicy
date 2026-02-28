@@ -10,6 +10,24 @@ import sys
 from dotenv import load_dotenv
 
 
+def _parse_refs(raw_refs: list[str]) -> dict[str, str]:
+    """Parse --ref NAME=PATH args into {name: dest_path} dict."""
+    character_refs: dict[str, str] = {}
+    for ref in raw_refs:
+        name, _, path = ref.partition("=")
+        name = name.strip()
+        path = path.strip()
+        if not path or not os.path.isfile(path):
+            print(f"Warning: reference image not found: {path}", file=sys.stderr)
+            continue
+        safe_name = name.replace(" ", "_")
+        dest = f"output/references/{safe_name}.jpg"
+        os.makedirs("output/references", exist_ok=True)
+        shutil.copy2(path, dest)
+        character_refs[name] = dest
+    return character_refs
+
+
 def main():
     load_dotenv()
 
@@ -19,8 +37,44 @@ def main():
     )
     parser.add_argument("concept", nargs="?", help="Story concept (1-2 sentences)")
     parser.add_argument("--output-dir", default="output", help="Output directory")
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="Start the dashboard server alongside the pipeline",
+    )
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Start the dashboard server only (browse past runs)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8420,
+        help="Port for the dashboard server (default: 8420)",
+    )
+    parser.add_argument(
+        "--ref",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help="Character reference image: NAME=PATH (repeatable)",
+    )
     args = parser.parse_args()
 
+    # ─── --web mode: server only, no pipeline ─────────────────
+    if args.web:
+        import uvicorn
+
+        from grok_spicy.db import init_db
+        from grok_spicy.web import app, set_db
+
+        set_db(init_db())
+        print(f"Dashboard: http://localhost:{args.port}")
+        uvicorn.run(app, host="0.0.0.0", port=args.port)
+        sys.exit(0)
+
+    # Everything below requires a concept
     if not args.concept:
         parser.print_help()
         sys.exit(0)
@@ -43,10 +97,54 @@ def main():
             file=sys.stderr,
         )
 
-    from grok_spicy.pipeline import video_pipeline
+    # Parse reference images
+    character_refs = _parse_refs(args.ref) if args.ref else None
 
-    result = video_pipeline(args.concept)
-    print(f"\nDone: {result}")
+    # ─── --serve mode: pipeline + dashboard server ────────────
+    if args.serve:
+        import threading
+
+        import uvicorn
+
+        from grok_spicy.db import init_db
+        from grok_spicy.observer import WebObserver
+        from grok_spicy.web import app, event_bus, set_db
+
+        conn = init_db()
+        set_db(conn)
+        observer = WebObserver(conn, event_bus)
+
+        server_thread = threading.Thread(
+            target=uvicorn.run,
+            args=(app,),
+            kwargs={"host": "0.0.0.0", "port": args.port, "log_level": "warning"},
+            daemon=True,
+        )
+        server_thread.start()
+        print(f"Dashboard: http://localhost:{args.port}")
+
+        from grok_spicy.pipeline import video_pipeline
+
+        result = video_pipeline(
+            args.concept,
+            observer=observer,
+            character_refs=character_refs,
+        )
+        print(f"\nDone: {result}")
+        print(
+            f"Dashboard still running at http://localhost:{args.port} "
+            f"— Ctrl+C to stop"
+        )
+        server_thread.join()
+    else:
+        # ─── Default: pipeline only ──────────────────────────
+        from grok_spicy.pipeline import video_pipeline
+
+        result = video_pipeline(
+            args.concept,
+            character_refs=character_refs,
+        )
+        print(f"\nDone: {result}")
 
 
 if __name__ == "__main__":

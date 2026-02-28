@@ -130,6 +130,18 @@ class VideoAsset(BaseModel):
     correction_passes: int
 
 
+class CharacterRefMapping(BaseModel):
+    """LLM-generated mapping from uploaded reference labels to story character names."""
+
+    mapping: dict[str, str] = Field(
+        description=(
+            "Map each uploaded reference label to the matching character name "
+            "from the story. Keys are the uploaded labels, values are Character.name "
+            "values. If a label has no match, omit it."
+        )
+    )
+
+
 class PipelineState(BaseModel):
     plan: StoryPlan
     characters: list[CharacterAsset] = []

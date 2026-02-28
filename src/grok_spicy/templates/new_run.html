@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}New Run — Grok Spicy{% endblock %}
+{% block content %}
+<h1>New Pipeline Run</h1>
+
+<form action="/api/runs" method="POST" enctype="multipart/form-data"
+      style="max-width: 600px;">
+
+    <label for="concept" style="display: block; margin-bottom: 0.3rem; font-weight: bold;">Story Concept</label>
+    <textarea name="concept" id="concept" rows="3"
+              placeholder="A curious fox meets a wise owl in an enchanted forest"
+              style="width: 100%; padding: 0.5rem; margin-bottom: 1.5rem;
+                     background: var(--card); color: var(--fg); border: 1px solid var(--border);
+                     border-radius: 4px; font-size: 1rem; font-family: inherit; resize: vertical;"
+              required></textarea>
+
+    <h2 style="margin-top: 0;">Character References <span style="opacity: 0.5; font-weight: normal; font-size: 0.85em;">(optional)</span></h2>
+    <p style="opacity: 0.7; margin-bottom: 1rem; font-size: 0.9em;">
+        Upload photos of real people or character art. Name each one —
+        the pipeline will use these faces when generating character sheets.
+    </p>
+
+    <div class="card" style="margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: center;">
+        <input type="text" name="ref_name_1" placeholder="Character name (e.g., Alex)"
+               style="flex: 1; padding: 0.4rem; background: var(--bg); color: var(--fg);
+                      border: 1px solid var(--border); border-radius: 4px; font-family: inherit;">
+        <input type="file" name="ref_image_1" accept="image/*" style="flex: 1;">
+    </div>
+    <div class="card" style="margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: center;">
+        <input type="text" name="ref_name_2" placeholder="Character name (e.g., Maya)"
+               style="flex: 1; padding: 0.4rem; background: var(--bg); color: var(--fg);
+                      border: 1px solid var(--border); border-radius: 4px; font-family: inherit;">
+        <input type="file" name="ref_image_2" accept="image/*" style="flex: 1;">
+    </div>
+
+    <button type="submit" class="btn" style="margin-top: 1rem; padding: 0.6rem 2rem; font-size: 1rem;">
+        Launch Pipeline
+    </button>
+</form>
+{% endblock %}

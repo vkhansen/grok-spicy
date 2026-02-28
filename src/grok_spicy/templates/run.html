@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ run.id }} — {{ run.title or run.concept[:30] }}{% endblock %}
+{% block content %}
+<h1>{{ run.title or run.concept }}</h1>
+{% if run.style %}<p><strong>Style:</strong> {{ run.style }}</p>{% endif %}
+<p><strong>Status:</strong>
+    <span class="status status-{{ 'complete' if run.status == 'complete' else 'running' if run.status not in ('failed', 'complete', 'pending') else run.status }}" id="run-status">
+        {{ run.status }}
+    </span>
+</p>
+
+<div hx-ext="sse" sse-connect="/sse/{{ run.id }}">
+
+    <h2>Characters</h2>
+    <div class="grid" id="characters" sse-swap="character" hx-swap="beforeend">
+        {% for c in run.character_assets %}
+        <div class="card">
+            <img src="/output/{{ c.portrait_path }}" alt="{{ c.name }}">
+            <h3>{{ c.name }}</h3>
+            <p>Score: {{ "%.0f"|format(c.consistency_score * 100) }}%</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <h2>Keyframes</h2>
+    <div class="grid" id="keyframes" sse-swap="keyframe" hx-swap="beforeend">
+        {% for kf in run.keyframe_assets %}
+        <div class="card">
+            <img src="/output/{{ kf.keyframe_path }}" alt="Scene {{ kf.scene_id }}">
+            <h3>Scene {{ kf.scene_id }}</h3>
+            <p>Score: {{ "%.0f"|format(kf.consistency_score * 100) }}%</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <h2>Videos</h2>
+    <div class="grid" id="videos" sse-swap="video" hx-swap="beforeend">
+        {% for v in run.video_assets %}
+        <div class="card">
+            <video src="/output/{{ v.video_path }}" autoplay loop muted playsinline></video>
+            <h3>Scene {{ v.scene_id }}</h3>
+            <p>Score: {{ "%.0f"|format(v.consistency_score * 100) }}%</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if run.final_video_path %}
+    <h2>Final Video</h2>
+    <video src="/output/{{ run.final_video_path }}" controls autoplay loop
+           style="max-width: 720px; margin-top: 0.5rem;"></video>
+    {% endif %}
+
+    <!-- Status update on complete/error -->
+    <div sse-swap="complete" hx-swap="none"></div>
+    <div sse-swap="error" hx-swap="none"></div>
+
+</div>
+
+<script>
+// Update status badge and reload content on complete/error
+document.body.addEventListener("sse:complete", function() {
+    document.getElementById("run-status").className = "status status-complete";
+    document.getElementById("run-status").textContent = "complete";
+    setTimeout(function() { location.reload(); }, 1000);
+});
+document.body.addEventListener("sse:error", function() {
+    document.getElementById("run-status").className = "status status-failed";
+    document.getElementById("run-status").textContent = "failed";
+});
+</script>
+{% endblock %}

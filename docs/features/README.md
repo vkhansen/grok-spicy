@@ -4,6 +4,53 @@ Build order for the Grok Spicy video pipeline. Each card is a self-contained uni
 
 ## Dependency Graph
 
+```mermaid
+graph TD
+    C01["01 Project Scaffolding"] --> C02["02 Data Models"]
+    C01 --> C03["03 xAI Client Wrapper"]
+
+    C02 --> C04["04 Story Ideation"]
+    C02 --> C05["05 Character Sheets"]
+    C02 --> C06["06 Keyframes"]
+    C02 --> C07["07 Script Compile"]
+    C02 --> C08["08 Video Generation"]
+
+    C03 --> C04
+    C03 --> C05
+    C03 --> C06
+    C03 --> C08
+
+    C08 --> C09["09 Video Assembly"]
+
+    C04 --> C10["10 Prefect Orchestration"]
+    C05 --> C10
+    C06 --> C10
+    C07 --> C10
+    C08 --> C10
+    C09 --> C10
+
+    C10 --> C11["11 CLI Entry Point"]
+
+    C02 --> C12["12 SQLite + Dashboard"]
+    C10 --> C12
+    C11 --> C12
+
+    style C01 fill:#1a3a1a,stroke:#4f9,color:#e0e0e0
+    style C02 fill:#1a3a1a,stroke:#4f9,color:#e0e0e0
+    style C03 fill:#1a3a1a,stroke:#4f9,color:#e0e0e0
+    style C04 fill:#2a2a1a,stroke:#ff9,color:#e0e0e0
+    style C05 fill:#2a2a1a,stroke:#ff9,color:#e0e0e0
+    style C06 fill:#2a2a1a,stroke:#ff9,color:#e0e0e0
+    style C07 fill:#2a2a1a,stroke:#ff9,color:#e0e0e0
+    style C08 fill:#2a2a1a,stroke:#ff9,color:#e0e0e0
+    style C09 fill:#2a2a1a,stroke:#ff9,color:#e0e0e0
+    style C10 fill:#1a1a3a,stroke:#4af,color:#e0e0e0
+    style C11 fill:#2a1a2a,stroke:#f4f,color:#e0e0e0
+    style C12 fill:#2a1a2a,stroke:#f4f,color:#e0e0e0
+```
+
+**Legend:** 🟢 Foundation — 🟡 Core Pipeline — 🔵 Integration — 🟣 Polish
+
 ```
 01 Project Scaffolding
 ├── 02 Data Models
@@ -38,7 +85,7 @@ Build order for the Grok Spicy video pipeline. Each card is a self-contained uni
 | 09 | [Video Assembly](09-video-assembly.md) | Core | Step 6 — FFmpeg normalize + concat |
 | 10 | [Prefect Orchestration](10-prefect-orchestration.md) | Integration | Main flow wiring, parallelism, state |
 | 11 | [CLI Entry Point](11-cli-entry-point.md) | Polish | Command-line interface |
-| 12 | [SQLite + Dashboard](Feature-plan-frontend.md) | Polish | SQLite DB, FastAPI, live htmx dashboard |
+| 12 | [SQLite + Dashboard](Feature-plan-frontend.md) | Polish | SQLite DB, FastAPI, live htmx dashboard, reference image upload |
 
 ## Suggested implementation phases
 
@@ -48,4 +95,4 @@ Build order for the Grok Spicy video pipeline. Each card is a self-contained uni
 
 **Phase 3 — Integration (Cards 10–11):** Wire everything together, add CLI. First end-to-end run.
 
-**Phase 4 — Observability (Card 12):** SQLite persistence, FastAPI server, live-reloading htmx dashboard.
+**Phase 4 — Observability (Card 12):** SQLite persistence, FastAPI server, live-reloading htmx dashboard, reference image upload for character faces.
