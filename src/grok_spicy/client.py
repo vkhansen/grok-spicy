@@ -39,9 +39,7 @@ def get_client():
     load_dotenv()
     api_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
     if not api_key:
-        raise RuntimeError(
-            "No API key found. Set GROK_API_KEY in .env or environment."
-        )
+        raise RuntimeError("No API key found. Set GROK_API_KEY in .env or environment.")
     return Client(api_key=api_key)
 
 
@@ -97,14 +95,26 @@ def extract_frame(video_path: str, output_path: str, position: str = "first") ->
 
     if position == "first":
         cmd = [
-            "ffmpeg", "-y", "-i", video_path,
-            "-vf", "select=eq(n\\,0)", "-vframes", "1",
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-vf",
+            "select=eq(n\\,0)",
+            "-vframes",
+            "1",
             output_path,
         ]
     else:
         cmd = [
-            "ffmpeg", "-y", "-sseof", "-0.1", "-i", video_path,
-            "-vframes", "1",
+            "ffmpeg",
+            "-y",
+            "-sseof",
+            "-0.1",
+            "-i",
+            video_path,
+            "-vframes",
+            "1",
             output_path,
         ]
 

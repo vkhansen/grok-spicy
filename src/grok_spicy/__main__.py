@@ -1,10 +1,18 @@
 """CLI entry point for grok-spicy."""
 
+from __future__ import annotations
+
 import argparse
+import os
+import shutil
 import sys
+
+from dotenv import load_dotenv
 
 
 def main():
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         prog="grok-spicy",
         description="Generate a multi-scene video from a text concept using Grok APIs",
@@ -17,11 +25,28 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    # Pipeline import deferred to Card 10
-    print(f"grok-spicy v0.1.0")
-    print(f"Concept: {args.concept}")
-    print(f"Output:  {args.output_dir}")
-    print("Pipeline not yet implemented — see docs/features/ for build plan.")
+    # Environment validation
+    api_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
+    if not api_key:
+        print(
+            "Error: No API key found.\n"
+            "Set GROK_API_KEY in .env or as an environment variable.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not shutil.which("ffmpeg"):
+        print(
+            "Error: FFmpeg not found on PATH.\n"
+            "Install it: https://ffmpeg.org/download.html",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    from grok_spicy.pipeline import video_pipeline
+
+    result = video_pipeline(args.concept)
+    print(f"\nDone: {result}")
 
 
 if __name__ == "__main__":

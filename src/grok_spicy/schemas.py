@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Optional
-
 from pydantic import BaseModel, Field
-
 
 # ═══════════════════════════════════════════════════════════════
 # STEP 1 OUTPUT: Story Plan
@@ -41,9 +37,7 @@ class Scene(BaseModel):
     characters_present: list[str] = Field(
         description="Character names (must match Character.name exactly)"
     )
-    setting: str = Field(
-        description="Physical environment, time of day, weather"
-    )
+    setting: str = Field(description="Physical environment, time of day, weather")
     camera: str = Field(
         description="Shot type + movement: 'medium shot, slow dolly forward'"
     )
@@ -56,9 +50,7 @@ class Scene(BaseModel):
     duration_seconds: int = Field(
         ge=3, le=15, description="Video duration, 8 is a good default"
     )
-    transition: str = Field(
-        default="cut", description="cut / crossfade / match-cut"
-    )
+    transition: str = Field(default="cut", description="cut / crossfade / match-cut")
 
 
 class StoryPlan(BaseModel):
@@ -70,9 +62,7 @@ class StoryPlan(BaseModel):
             "not just 'animated'. This prefix starts every prompt."
         )
     )
-    aspect_ratio: str = Field(
-        default="16:9", description="16:9 / 9:16 / 1:1 / 4:3"
-    )
+    aspect_ratio: str = Field(default="16:9", description="16:9 / 9:16 / 1:1 / 4:3")
     color_palette: str = Field(
         description="Dominant colors: 'deep forest greens, amber, moonlight silver'"
     )
@@ -87,7 +77,8 @@ class StoryPlan(BaseModel):
 
 class ConsistencyScore(BaseModel):
     overall_score: float = Field(
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0,
         description="0 = completely wrong, 1 = perfect match",
     )
     per_character: dict[str, float] = Field(
@@ -98,7 +89,7 @@ class ConsistencyScore(BaseModel):
         default_factory=list,
         description="Specific problems: 'hair is brown, should be red'",
     )
-    fix_prompt: Optional[str] = Field(
+    fix_prompt: str | None = Field(
         default=None,
         description="Surgical edit prompt to fix issues if any",
     )
@@ -144,4 +135,4 @@ class PipelineState(BaseModel):
     characters: list[CharacterAsset] = []
     keyframes: list[KeyframeAsset] = []
     videos: list[VideoAsset] = []
-    final_video_path: Optional[str] = None
+    final_video_path: str | None = None
