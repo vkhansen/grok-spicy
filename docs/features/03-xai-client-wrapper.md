@@ -15,7 +15,7 @@ Create a thin wrapper in `src/grok_spicy/client.py` that centralizes xAI SDK ini
 ### `client.py`
 
 **Client factory:**
-- `get_client() -> Client` — reads `XAI_API_KEY` from env, returns configured `xai_sdk.Client`
+- `get_client() -> Client` — reads `GROK_API_KEY` from env (loaded via python-dotenv), returns configured `xai_sdk.Client`
 - Fail-fast with clear error if key is missing
 
 **Download helper:**
@@ -49,7 +49,7 @@ MODEL_STRUCTURED = "grok-4-1-fast-non-reasoning"
 
 ## Acceptance Criteria
 
-- [ ] `get_client()` raises clear error when `XAI_API_KEY` is unset
+- [ ] `get_client()` raises clear error when `GROK_API_KEY` is unset
 - [ ] `download()` creates intermediate directories and writes file
 - [ ] `extract_frame()` works for both first and last frame positions
 - [ ] All constants match values from the pipeline plan

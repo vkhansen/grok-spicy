@@ -70,7 +70,7 @@ grok-spicy/
 
 ## Environment
 
-- `XAI_API_KEY` environment variable (or `.env` file) required
+- `GROK_API_KEY` environment variable (or `.env` file) required
 - FFmpeg must be installed and on PATH
 - Prefect server optional (works with local ephemeral server)
 
