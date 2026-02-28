@@ -66,7 +66,8 @@ def generate_character_sheet(
             prompt = (
                 f"{style}. Transform this photo into a full body character "
                 f"portrait while preserving the person's exact facial features, "
-                f"face shape, and likeness. {character.visual_description}. "
+                f"face shape, and likeness. Keep the following appearance details "
+                f"accurate: {character.visual_description}. "
                 f"Standing in a neutral three-quarter pose against a plain "
                 f"light gray background. Professional character design "
                 f"reference sheet style. Sharp details, even studio lighting, "
@@ -105,25 +106,49 @@ def generate_character_sheet(
         )
 
         # Vision verify
-        vision_prompt = (
-            f"Score how well this portrait matches the description. "
-            f"Be strict on: hair color/style, eye color, clothing "
-            f"colors and style, build, distinguishing features.\n\n"
-            f"Description: {character.visual_description}"
-        )
-        logger.info(
-            "Vision verify prompt (model=%s, character=%r): %s",
-            MODEL_REASONING,
-            character.name,
-            vision_prompt,
-        )
         chat = client.chat.create(model=MODEL_REASONING)
-        chat.append(
-            user(
-                vision_prompt,
-                image(img.url),
+        if reference_image_path:
+            # Compare generated portrait against the original reference photo
+            vision_prompt = (
+                f"Score how well the first image (generated portrait) preserves "
+                f"the person's likeness from the second image (reference photo). "
+                f"Be strict on: facial features, face shape, hair color/style, "
+                f"eye color, skin tone, build, distinguishing marks.\n\n"
+                f"Also check these appearance details: "
+                f"{character.visual_description}"
             )
-        )
+            logger.info(
+                "Vision verify (ref comparison, model=%s, character=%r): %s",
+                MODEL_REASONING,
+                character.name,
+                vision_prompt,
+            )
+            chat.append(
+                user(
+                    vision_prompt,
+                    image(img.url),
+                    image(ref_b64),
+                )
+            )
+        else:
+            vision_prompt = (
+                f"Score how well this portrait matches the description. "
+                f"Be strict on: hair color/style, eye color, clothing "
+                f"colors and style, build, distinguishing features.\n\n"
+                f"Description: {character.visual_description}"
+            )
+            logger.info(
+                "Vision verify (text-only, model=%s, character=%r): %s",
+                MODEL_REASONING,
+                character.name,
+                vision_prompt,
+            )
+            chat.append(
+                user(
+                    vision_prompt,
+                    image(img.url),
+                )
+            )
         _, score = chat.parse(ConsistencyScore)
 
         logger.info(

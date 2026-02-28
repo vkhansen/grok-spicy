@@ -142,6 +142,22 @@ class CharacterRefMapping(BaseModel):
     )
 
 
+class CharacterDescription(BaseModel):
+    """Vision-extracted description of a person in a reference photo."""
+
+    name: str = Field(description="The character name label provided by the user")
+    visual_description: str = Field(
+        description=(
+            "Exhaustive visual description extracted from the photo, minimum 80 words. "
+            "Include: age range, gender, ethnicity/skin tone, hair (color, style, length), "
+            "eye color, facial features (nose shape, jawline), body build, "
+            "exact clothing (colors, materials, accessories), "
+            "any distinguishing marks (scars, tattoos, glasses). "
+            "Describe ONLY what you see — do not invent or embellish."
+        )
+    )
+
+
 class PipelineState(BaseModel):
     plan: StoryPlan
     characters: list[CharacterAsset] = []

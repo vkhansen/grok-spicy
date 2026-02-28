@@ -11,6 +11,7 @@ from grok_spicy.observer import NullObserver, PipelineObserver
 from grok_spicy.schemas import Character, PipelineState
 from grok_spicy.tasks.assembly import assemble_final_video
 from grok_spicy.tasks.characters import generate_character_sheet
+from grok_spicy.tasks.describe_ref import describe_reference_image
 from grok_spicy.tasks.ideation import plan_story
 from grok_spicy.tasks.keyframes import compose_keyframe
 from grok_spicy.tasks.script import compile_script
@@ -149,18 +150,32 @@ def video_pipeline(
     logger.info("Run ID assigned: %d", run_id)
 
     try:
+        # ═══ PRE-IDEATION: ANALYZE REFERENCE IMAGES ═══
+        ref_descriptions: dict[str, str] | None = None
+        if character_refs:
+            logger.info(
+                "Pre-ideation: analyzing %d reference images", len(character_refs)
+            )
+            print("=== Pre-ideation: Analyzing reference images ===")
+            desc_futures = [
+                describe_reference_image.submit(name, path)
+                for name, path in character_refs.items()
+            ]
+            ref_descriptions = {}
+            for fut in desc_futures:
+                desc = fut.result()
+                ref_descriptions[desc.name] = desc.visual_description
+                logger.info(
+                    "Reference described: %s (%d words)",
+                    desc.name,
+                    len(desc.visual_description.split()),
+                )
+                print(f"  {desc.name}: description extracted")
+
         # ═══ STEP 1: IDEATION ═══
         logger.info("STEP 1: Ideation — generating story plan")
         print("=== STEP 1: Planning story ===")
-        ideation_concept = concept
-        if character_refs:
-            names = ", ".join(character_refs.keys())
-            ideation_concept += (
-                f"\nThe user has provided reference images for these characters: "
-                f"{names}. Use these exact names for the corresponding characters."
-            )
-            logger.debug("Ideation concept augmented with ref names: %s", names)
-        plan = plan_story(ideation_concept)
+        plan = plan_story(concept, ref_descriptions=ref_descriptions)
         logger.info(
             "STEP 1 complete: title=%r, characters=%d, scenes=%d, "
             "style=%r, aspect=%s",
