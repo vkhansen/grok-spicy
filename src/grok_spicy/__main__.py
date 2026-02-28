@@ -36,6 +36,11 @@ def main():
         description="Generate a multi-scene video from a text concept using Grok APIs",
     )
     parser.add_argument("concept", nargs="?", help="Story concept (1-2 sentences)")
+    parser.add_argument(
+        "--prompt-file",
+        metavar="FILE",
+        help="Read concept from a text file (one concept per line, blank lines ignored)",
+    )
     parser.add_argument("--output-dir", default="output", help="Output directory")
     parser.add_argument(
         "--serve",
@@ -74,8 +79,24 @@ def main():
         uvicorn.run(app, host="0.0.0.0", port=args.port)
         sys.exit(0)
 
-    # Everything below requires a concept
-    if not args.concept:
+    # Build list of concepts to run
+    concepts: list[str] = []
+    if args.prompt_file:
+        path = args.prompt_file
+        if not os.path.isfile(path):
+            print(f"Error: prompt file not found: {path}", file=sys.stderr)
+            sys.exit(1)
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    concepts.append(stripped)
+        if not concepts:
+            print(f"Error: no prompts found in {path}", file=sys.stderr)
+            sys.exit(1)
+    elif args.concept:
+        concepts.append(args.concept)
+    else:
         parser.print_help()
         sys.exit(0)
 
@@ -100,6 +121,8 @@ def main():
     # Parse reference images
     character_refs = _parse_refs(args.ref) if args.ref else None
 
+    total = len(concepts)
+
     # ─── --serve mode: pipeline + dashboard server ────────────
     if args.serve:
         import threading
@@ -112,7 +135,6 @@ def main():
 
         conn = init_db()
         set_db(conn)
-        observer = WebObserver(conn, event_bus)
 
         server_thread = threading.Thread(
             target=uvicorn.run,
@@ -125,13 +147,21 @@ def main():
 
         from grok_spicy.pipeline import video_pipeline
 
-        result = video_pipeline(
-            args.concept,
-            observer=observer,
-            character_refs=character_refs,
-        )
-        print(f"\nDone: {result}")
+        for i, concept in enumerate(concepts, 1):
+            if total > 1:
+                print(f"\n{'='*60}")
+                print(f"[{i}/{total}] {concept}")
+                print(f"{'='*60}")
+            observer = WebObserver(conn, event_bus)
+            result = video_pipeline(
+                concept,
+                observer=observer,
+                character_refs=character_refs,
+            )
+            print(f"\nDone: {result}")
+
         print(
+            f"\nAll {total} run(s) complete. "
             f"Dashboard still running at http://localhost:{args.port} "
             f"— Ctrl+C to stop"
         )
@@ -140,11 +170,19 @@ def main():
         # ─── Default: pipeline only ──────────────────────────
         from grok_spicy.pipeline import video_pipeline
 
-        result = video_pipeline(
-            args.concept,
-            character_refs=character_refs,
-        )
-        print(f"\nDone: {result}")
+        for i, concept in enumerate(concepts, 1):
+            if total > 1:
+                print(f"\n{'='*60}")
+                print(f"[{i}/{total}] {concept}")
+                print(f"{'='*60}")
+            result = video_pipeline(
+                concept,
+                character_refs=character_refs,
+            )
+            print(f"\nDone: {result}")
+
+        if total > 1:
+            print(f"\nAll {total} runs complete.")
 
 
 if __name__ == "__main__":

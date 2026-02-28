@@ -33,3 +33,8 @@ Thumbs.db
 
 # Prefect
 .prefect/
+basic_prompt.txt
+output/
+output.zip
+prompt2.txt
+basic_prompt.txt.bak

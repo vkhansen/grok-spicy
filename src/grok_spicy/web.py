@@ -56,6 +56,14 @@ os.makedirs("output", exist_ok=True)
 app.mount("/output", StaticFiles(directory="output"), name="output")
 
 
+# ─── Health check ─────────────────────────────────────────────
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 # ─── HTML routes ──────────────────────────────────────────────
 
 
