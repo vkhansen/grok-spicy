@@ -42,4 +42,5 @@ def plan_story(concept: str) -> StoryPlan:
     chat.append(system(SYSTEM_PROMPT))
     chat.append(user(f"Create a visual story plan for: {concept}"))
     _, plan = chat.parse(StoryPlan)
-    return plan
+    result: StoryPlan = plan
+    return result

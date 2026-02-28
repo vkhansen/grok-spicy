@@ -87,6 +87,49 @@ python -m grok_spicy "A curious fox meets a wise owl in an enchanted forest"
 prefect deployment run grok-video-pipeline/default --param concept="..."
 ```
 
+## Linting & Formatting
+
+All tools are configured in `pyproject.toml`. CI runs these on every push/PR.
+
+```bash
+# Install dev dependencies
+pip install -r requirements-dev.txt
+
+# Auto-fix formatting
+python -m isort .
+python -m black .
+
+# Check (CI mode — no changes, just report)
+python -m isort . --check-only --diff
+python -m black . --check --diff
+python -m ruff check .
+python -m mypy src/grok_spicy/
+```
+
+**Tool config:**
+- **black** — line length 88, target Python 3.12
+- **isort** — `profile = "black"`, first-party = `grok_spicy`
+- **ruff** — rules: E, F, W, I, UP, B, SIM (no E501)
+- **mypy** — `ignore_missing_imports = true`, `check_untyped_defs = true`
+
+## Testing
+
+```bash
+# Run all tests
+python -m pytest tests/ --tb=short -q
+
+# Run a specific test file
+python -m pytest tests/test_schemas.py -v
+```
+
+Tests live in `tests/` with `pythonpath = ["src"]` set in `pyproject.toml`.
+
+## CI Pipeline
+
+GitHub Actions workflow at `.github/workflows/ci.yml` runs on push/PR to `main`:
+- **lint** job — isort, black, ruff, mypy
+- **test** job — pytest
+
 ## Cost & Runtime
 
 - ~$3.80 per run (2 characters, 3 scenes)

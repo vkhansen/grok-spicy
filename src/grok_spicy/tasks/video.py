@@ -80,7 +80,8 @@ def generate_scene_video(
             )
         )
         _, s = chat.parse(ConsistencyScore)
-        return s
+        result: ConsistencyScore = s
+        return result
 
     score = _check_consistency()
 
