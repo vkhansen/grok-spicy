@@ -130,6 +130,40 @@ python -m grok_spicy --web
 python -m grok_spicy "concept" --serve --port 9000
 ```
 
+### Two Servers — Don't Get Confused
+
+When you use `--serve`, **two servers** start simultaneously:
+
+| Server | Port | What It Is |
+|---|---|---|
+| Prefect temporary server | Random (e.g., 8736) | Internal workflow engine. **Not your dashboard.** |
+| Dashboard (FastAPI) | **8420** (default) | The actual web UI you want. |
+
+Prefect logs its URL first (`Starting temporary server on http://127.0.0.1:8736`), which
+can be misleading. **Ignore it.** The dashboard URL is printed in a clear banner right after:
+
+```
+============================================================
+  DASHBOARD: http://localhost:8420
+  (ignore the Prefect server URL above — that is internal)
+============================================================
+```
+
+If you open Prefect's port in a browser, you'll see `{"detail":"Not Found"}` — that's
+expected. Go to **http://localhost:8420** instead (or your `--port` value).
+
+### Verifying the Server
+
+```bash
+# Health check
+curl http://localhost:8420/health
+# → {"status":"ok"}
+
+# Dashboard home page
+curl http://localhost:8420/
+# → HTML page
+```
+
 ### Reference Images (Character Faces)
 
 Upload photos of real people or character art. The pipeline will stylize them into the art style while preserving facial likeness.
@@ -175,11 +209,13 @@ python -m grok_spicy [concept] [options]
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `concept` | positional | — | Story concept (1-2 sentences) |
+| `--prompt-file` | string | — | Read concept(s) from a text file (one per line) |
 | `--output-dir` | string | `output` | Output directory |
 | `--serve` | flag | `false` | Start dashboard server alongside pipeline |
 | `--web` | flag | `false` | Start dashboard server only (browse past runs) |
 | `--port` | int | `8420` | Dashboard server port |
 | `--ref` | `NAME=PATH` | — | Character reference image (repeatable) |
+| `-v`, `--verbose` | flag | `false` | Enable DEBUG-level logging on the console |
 
 **Behavior matrix:**
 
@@ -416,38 +452,56 @@ python -m mypy src/grok_spicy/
 ## Testing
 
 ```bash
-# Run all tests
+# Run all unit tests (no server, no API key needed)
 python -m pytest tests/ --tb=short -q
 
 # Run a specific test file
-python -m pytest tests/test_schemas.py -v
+python -m pytest tests/test_web.py -v
 
-# Run with verbose output
-python -m pytest tests/ -v --tb=long
+# Run live server integration tests (starts real uvicorn)
+python -m pytest tests/test_web_live.py -v -m live
 
-# Run tests matching a pattern
-python -m pytest tests/ -k "test_round_trip"
+# Run everything including live tests
+python -m pytest tests/ -v -m "live or not live"
 ```
 
 ### Test Structure
 
 ```
 tests/
-├── test_schemas.py    # Pydantic model validation, JSON round-trips, field bounds
-└── test_client.py     # Constants verification, base64 encoding helper
+├── README.md                # Detailed testing guide + troubleshooting
+├── test_schemas.py          # 5 tests — Pydantic models, JSON round-trips, field bounds
+├── test_client.py           # 2 tests — Constants, base64 encoding
+├── test_db.py               # 25 tests — SQLite schema, CRUD, upserts, JSON fields
+├── test_events.py           # 9 tests — EventBus subscribe/publish, queue ordering
+├── test_observer.py         # 10 tests — NullObserver, WebObserver, error resilience
+├── test_pipeline_helpers.py # 8 tests — _notify(), _match_character_refs()
+├── test_cli.py              # 10 tests — --ref parsing, --prompt-file, error handling
+├── test_web.py              # 22 tests — HTTP routes, JSON API, uploads, health, static
+└── test_web_live.py         # 5 tests — Real uvicorn server (marked @pytest.mark.live)
 ```
 
-**`test_schemas.py`** covers:
-- `StoryPlan.model_json_schema()` produces valid JSON Schema
-- `StoryPlan` and `PipelineState` round-trip through JSON serialization
-- `ConsistencyScore` field bounds (0.0-1.0)
-- `Scene.duration_seconds` bounds (3-15)
+Unit tests (everything except `test_web_live.py`) require no server, no API key, and no
+network access. They run in CI on every push. Live tests start a real uvicorn server on a
+random port and need `pip install -e ".[web]"`.
 
-**`test_client.py`** covers:
-- All pipeline constants match expected values
-- `to_base64()` correctly encodes file contents
+Tests use `pythonpath = ["src"]` configured in `pyproject.toml`, so imports work without
+installing the package. See [`tests/README.md`](tests/README.md) for the full testing guide,
+including manual server testing and common issues (port confusion, etc.).
 
-Tests use `pythonpath = ["src"]` configured in `pyproject.toml`, so imports work without installing the package.
+## Logging
+
+Logs are always written to `output/grok_spicy.log` at DEBUG level — every LLM prompt,
+API call, decision, and score is captured.
+
+Console output defaults to INFO level. Use `-v` for full DEBUG output:
+
+```bash
+python -m grok_spicy "concept" --serve -v
+```
+
+All LLM prompts (ideation, character generation, keyframe composition, video generation,
+vision checks) are logged **in full** at INFO level — visible on console without `-v`.
 
 ## CI Pipeline
 
@@ -493,8 +547,16 @@ grok-spicy/
 │           ├── video.py            # Step 5: image → video + corrections
 │           └── assembly.py         # Step 6: FFmpeg concat
 ├── tests/
-│   ├── test_schemas.py
-│   └── test_client.py
+│   ├── README.md               # Testing guide + troubleshooting
+│   ├── test_schemas.py         # Pydantic model validation
+│   ├── test_client.py          # SDK wrapper helpers
+│   ├── test_db.py              # SQLite CRUD operations
+│   ├── test_events.py          # EventBus pub/sub
+│   ├── test_observer.py        # Observer pattern
+│   ├── test_pipeline_helpers.py # Pipeline utility functions
+│   ├── test_cli.py             # CLI argument parsing
+│   ├── test_web.py             # Dashboard routes (unit)
+│   └── test_web_live.py        # Dashboard routes (live server)
 └── docs/features/                  # Feature cards (numbered)
 ```
 
