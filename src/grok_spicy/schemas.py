@@ -236,6 +236,7 @@ class SpicyMode(BaseModel):
     enabled_modifiers: list[str]
     intensity: Literal["low", "medium", "high", "extreme"]
     global_prefix: str
+    extreme_emphasis: str = ""
 
 
 class SpicyCharacter(BaseModel):
@@ -253,6 +254,7 @@ class NarrativeCore(BaseModel):
 
     restraint_rule: str = ""
     escalation_arc: str = ""
+    style_directive: str = ""
 
 
 class DefaultVideo(BaseModel):

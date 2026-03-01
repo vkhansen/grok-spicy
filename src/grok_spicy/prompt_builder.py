@@ -103,9 +103,9 @@ def build_spicy_prompt(
     if modifiers:
         parts.append(", ".join(modifiers))
 
-    # Extreme intensity: add emphasis wrapper
-    if spicy.intensity == "extreme" and modifiers:
-        parts.append("(extreme detail, maximum realism)")
+    # Extreme intensity: add emphasis wrapper from config
+    if spicy.intensity == "extreme" and modifiers and spicy.extreme_emphasis:
+        parts.append(spicy.extreme_emphasis)
 
     prompt = ". ".join(p.rstrip(". ") for p in parts if p) + "."
     logger.info(

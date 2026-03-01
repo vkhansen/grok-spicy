@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(pip install:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(isort .:*)",
+      "Bash(test:*)",
+      "Bash(where ffmpeg:*)",
+      "Bash(winget:*)",
+      "Bash(pip show:*)",
+      "WebFetch(domain:docs.x.ai)",
+      "Bash(ls \":*)",
+      "Bash(grep:*)"
     ]
   }
 }

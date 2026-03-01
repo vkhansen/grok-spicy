@@ -86,6 +86,9 @@ graph TD
 | 10 | [Prefect Orchestration](10-prefect-orchestration.md) | Integration | Main flow wiring, parallelism, state |
 | 11 | [CLI Entry Point](11-cli-entry-point.md) | Polish | Command-line interface |
 | 12 | [SQLite + Dashboard](Feature-plan-frontend.md) | Polish | SQLite DB, FastAPI, live htmx dashboard, reference image upload |
+| 13 | [Centralized Spicy Config](13-centralized-spicy-mode-config.md) | Refactor | video.json config-driven spicy mode |
+| 14 | [Remove Hardcoded Motion](14-remove-hardcoded-motion-suffix.md) | Quality | Clean up motion prompt construction |
+| 15 | [Multi-Backend Providers](15-local-comfyui-migration.md) | Architecture | Provider abstraction + ComfyUI/Ollama local backends |
 
 ## Suggested implementation phases
 

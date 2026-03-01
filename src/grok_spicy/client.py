@@ -141,10 +141,8 @@ def reword_prompt(prompt: str) -> str:
             "The following image/video generation prompt was blocked by content "
             "moderation. Rephrase it to pass moderation while preserving the "
             "scene composition, character names, positioning, camera angles, "
-            "lighting, and artistic style. Replace any explicit, revealing, or "
-            "NSFW clothing/body descriptions with tasteful, stylish alternatives "
-            "(e.g. replace lingerie with elegant evening wear, replace nudity "
-            "with fashionable outfits). Keep all other visual details intact. "
+            "lighting, and artistic style. "
+            "Keep all other visual details intact. "
             "Return ONLY the reworded prompt text.\n\n"
             f"Blocked prompt:\n{prompt}"
         )

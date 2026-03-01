@@ -306,6 +306,7 @@ class TestBuildSpicyPrompt:
                 enabled_modifiers=["mod1"],
                 intensity="extreme",
                 global_prefix="",
+                extreme_emphasis="(extreme detail, maximum realism)",
             ),
         )
         prompt = build_spicy_prompt(cfg, character_ids=[])

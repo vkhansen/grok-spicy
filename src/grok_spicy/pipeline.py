@@ -407,6 +407,7 @@ def video_pipeline(
                 plan.aspect_ratio,
                 reference_image_path=matched_refs.get(c.name),
                 config=config,
+                video_config=video_config,
             )
             for c in plan.characters
         ]

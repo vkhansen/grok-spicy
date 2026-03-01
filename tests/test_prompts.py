@@ -1,5 +1,6 @@
 """Unit tests for prompt builder functions."""
 
+from grok_spicy.prompt_builder import build_spicy_prompt
 from grok_spicy.prompts import (
     append_negative_prompt,
     build_video_prompt,
@@ -16,7 +17,49 @@ from grok_spicy.prompts import (
     video_fix_prompt,
     video_vision_prompt,
 )
-from grok_spicy.schemas import Character, Scene
+from grok_spicy.schemas import (
+    Character,
+    DefaultVideo,
+    NarrativeCore,
+    Scene,
+    SpicyMode,
+    VideoConfig,
+)
+
+# ─── Forbidden hardcoded content ──────────────────────────
+
+FORBIDDEN_HARDCODED = [
+    "Smooth cinematic motion",
+    "even studio lighting",
+    "Sharp details",
+    "Professional character design reference sheet style",
+    "extreme detail, maximum realism",
+    "elegant evening wear",
+    "fashionable outfits",
+    "No sudden scene changes",
+    "No freeze frames",
+    "No unrelated motion",
+]
+
+
+# ─── Helpers ──────────────────────────────────────────────
+
+
+def _make_video_config(style_directive: str = "") -> VideoConfig:
+    return VideoConfig(
+        spicy_mode=SpicyMode(
+            enabled=True,
+            enabled_modifiers=["modifier_a"],
+            intensity="high",
+            global_prefix="PREFIX: ",
+        ),
+        narrative_core=NarrativeCore(
+            restraint_rule="test rule",
+            escalation_arc="test arc",
+            style_directive=style_directive,
+        ),
+    )
+
 
 # ─── Character prompts ─────────────────────────────────────
 
@@ -96,7 +139,12 @@ def test_build_video_prompt_standard():
         duration_seconds=8,
     )
     assert "Fox leaps" in result
-    assert "Smooth cinematic motion" in result
+    assert "medium shot" in result
+    assert "Fox jumps" in result
+    assert "warm golden" in result
+    assert "Pixar 3D" in result
+    # Must NOT contain hardcoded content
+    assert "Smooth cinematic motion" not in result
     # Standard tier: no phases
     assert "Phase 1" not in result
 
@@ -248,3 +296,261 @@ def test_describe_ref_user_prompt():
     result = describe_ref_user_prompt("Alex")
     assert "Alex" in result
     assert "reference photo" in result
+
+
+# ═══════════════════════════════════════════════════════════════
+# NEW: No hardcoded content leak tests
+# ═══════════════════════════════════════════════════════════════
+
+
+def test_build_video_prompt_no_hardcoded_content():
+    """Video prompts must not contain any hardcoded scene/motion/style content."""
+    result = build_video_prompt(
+        prompt_summary="Fox leaps",
+        camera="medium shot",
+        action="Fox jumps",
+        mood="warm golden",
+        style="Pixar 3D",
+        duration_seconds=8,
+    )
+    for forbidden in FORBIDDEN_HARDCODED:
+        assert forbidden not in result, f"Hardcoded content leak: {forbidden!r}"
+
+
+def test_build_video_prompt_extended_no_hardcoded_content():
+    """Extended video prompts must not contain any hardcoded content."""
+    result = build_video_prompt(
+        prompt_summary="Fox leaps",
+        camera="medium shot",
+        action="Fox jumps; Fox lands",
+        mood="warm golden",
+        style="Pixar 3D",
+        duration_seconds=12,
+    )
+    for forbidden in FORBIDDEN_HARDCODED:
+        assert forbidden not in result, f"Hardcoded content leak: {forbidden!r}"
+
+
+def test_character_stylize_prompt_no_hardcoded_content():
+    """Character stylize prompts must not inject hardcoded aesthetics."""
+    result = character_stylize_prompt("Dark cinematic", "red hair, blue eyes")
+    for forbidden in FORBIDDEN_HARDCODED:
+        assert forbidden not in result, f"Hardcoded content leak: {forbidden!r}"
+
+
+def test_character_generate_prompt_no_hardcoded_content():
+    """Character generate prompts must not inject hardcoded aesthetics."""
+    result = character_generate_prompt("Anime cel-shaded", "tall, dark cloak")
+    for forbidden in FORBIDDEN_HARDCODED:
+        assert forbidden not in result, f"Hardcoded content leak: {forbidden!r}"
+
+
+# ═══════════════════════════════════════════════════════════════
+# NEW: Prompt composability — only user inputs appear in output
+# ═══════════════════════════════════════════════════════════════
+
+
+def test_build_video_prompt_only_contains_inputs():
+    """Every content word in the output must originate from an input parameter."""
+    result = build_video_prompt(
+        prompt_summary="ALPHA_SUMMARY",
+        camera="BETA_CAMERA",
+        action="GAMMA_ACTION",
+        mood="DELTA_MOOD",
+        style="EPSILON_STYLE",
+        duration_seconds=6,
+    )
+    assert "ALPHA_SUMMARY" in result
+    assert "BETA_CAMERA" in result
+    assert "GAMMA_ACTION" in result
+    assert "DELTA_MOOD" in result
+    assert "EPSILON_STYLE" in result
+
+
+def test_character_generate_prompt_only_contains_inputs():
+    """Character prompt output must only contain the style and description passed in."""
+    result = character_generate_prompt("STYLE_TOKEN", "DESCRIPTION_TOKEN")
+    assert "STYLE_TOKEN" in result
+    assert "DESCRIPTION_TOKEN" in result
+
+
+def test_character_stylize_prompt_only_contains_inputs():
+    """Character stylize prompt must only contain the style and description passed in."""
+    result = character_stylize_prompt("STYLE_TOKEN", "DESCRIPTION_TOKEN")
+    assert "STYLE_TOKEN" in result
+    assert "DESCRIPTION_TOKEN" in result
+
+
+# ═══════════════════════════════════════════════════════════════
+# NEW: style_directive injection from config
+# ═══════════════════════════════════════════════════════════════
+
+
+def test_build_video_prompt_with_style_directive():
+    """style_directive from config must appear in video prompt output."""
+    cfg = _make_video_config(style_directive="harsh rim lighting, cold blue palette")
+    result = build_video_prompt(
+        prompt_summary="summary",
+        camera="tracking shot",
+        action="action",
+        mood="tense",
+        style="cinematic",
+        duration_seconds=6,
+        video_config=cfg,
+    )
+    assert "harsh rim lighting, cold blue palette" in result
+
+
+def test_character_generate_prompt_with_style_directive():
+    """style_directive from config must appear in character prompt output."""
+    cfg = _make_video_config(style_directive="dramatic shadows, crimson accents")
+    result = character_generate_prompt("cinematic", "tall figure", video_config=cfg)
+    assert "dramatic shadows, crimson accents" in result
+
+
+def test_character_stylize_prompt_with_style_directive():
+    """style_directive from config must appear in character stylize prompt output."""
+    cfg = _make_video_config(style_directive="noir lighting")
+    result = character_stylize_prompt("cinematic", "blue eyes", video_config=cfg)
+    assert "noir lighting" in result
+
+
+# ═══════════════════════════════════════════════════════════════
+# NEW: extreme_emphasis from config (not hardcoded)
+# ═══════════════════════════════════════════════════════════════
+
+
+def test_extreme_emphasis_from_config():
+    """Extreme emphasis text must come from config, not be hardcoded."""
+    cfg = VideoConfig(
+        spicy_mode=SpicyMode(
+            enabled=True,
+            enabled_modifiers=["modifier_a"],
+            intensity="extreme",
+            global_prefix="",
+            extreme_emphasis="(CUSTOM EMPHASIS FROM CONFIG)",
+        ),
+        default_video=DefaultVideo(),
+    )
+    result = build_spicy_prompt(cfg)
+    assert "(CUSTOM EMPHASIS FROM CONFIG)" in result
+    assert "(extreme detail, maximum realism)" not in result
+
+
+def test_extreme_no_emphasis_when_field_empty():
+    """No emphasis appended when extreme_emphasis is empty."""
+    cfg = VideoConfig(
+        spicy_mode=SpicyMode(
+            enabled=True,
+            enabled_modifiers=["modifier_a"],
+            intensity="extreme",
+            global_prefix="",
+            extreme_emphasis="",
+        ),
+        default_video=DefaultVideo(),
+    )
+    result = build_spicy_prompt(cfg)
+    assert "(extreme detail, maximum realism)" not in result
+
+
+# ═══════════════════════════════════════════════════════════════
+# NEW: video.json field loading validation
+# ═══════════════════════════════════════════════════════════════
+
+
+def test_video_config_loads_all_fields(tmp_path):
+    """video.json must load all fields into the correct Pydantic model fields."""
+    import json
+
+    from grok_spicy.config import clear_cache, load_video_config
+
+    clear_cache()
+    config_path = tmp_path / "video.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "version": "1.0",
+                "spicy_mode": {
+                    "enabled": True,
+                    "enabled_modifiers": ["modifier_one", "modifier_two"],
+                    "intensity": "high",
+                    "global_prefix": "test prefix: ",
+                    "extreme_emphasis": "",
+                },
+                "characters": [
+                    {
+                        "id": "char_1",
+                        "name": "TestChar",
+                        "description": "test description",
+                        "images": ["path/to/img.jpg"],
+                        "spicy_traits": ["trait_a"],
+                    }
+                ],
+                "default_video": {
+                    "scene": "test environment",
+                    "motion": "test motion directive",
+                    "audio_cues": "test audio",
+                },
+                "narrative_core": {
+                    "restraint_rule": "test rule",
+                    "escalation_arc": "test arc",
+                    "style_directive": "test style directive",
+                },
+            }
+        )
+    )
+
+    cfg = load_video_config(config_path)
+
+    # spicy_mode fields
+    assert cfg.spicy_mode.enabled is True
+    assert cfg.spicy_mode.enabled_modifiers == ["modifier_one", "modifier_two"]
+    assert cfg.spicy_mode.intensity == "high"
+    assert cfg.spicy_mode.global_prefix == "test prefix: "
+
+    # characters
+    assert len(cfg.characters) == 1
+    assert cfg.characters[0].name == "TestChar"
+    assert cfg.characters[0].images == ["path/to/img.jpg"]
+
+    # default_video — these MUST NOT be empty
+    assert cfg.default_video.scene == "test environment"
+    assert cfg.default_video.motion == "test motion directive"
+    assert cfg.default_video.audio_cues == "test audio"
+
+    # narrative_core
+    assert cfg.narrative_core is not None
+    assert cfg.narrative_core.restraint_rule == "test rule"
+    assert cfg.narrative_core.escalation_arc == "test arc"
+    assert cfg.narrative_core.style_directive == "test style directive"
+
+    clear_cache()
+
+
+# ═══════════════════════════════════════════════════════════════
+# NEW: pipeline passes video_config to character sheet
+# ═══════════════════════════════════════════════════════════════
+
+
+def test_pipeline_passes_video_config_to_character_sheet():
+    """Pipeline must pass video_config to generate_character_sheet().
+
+    Code inspection test — verify the call site in pipeline.py includes
+    video_config in the arguments to generate_character_sheet.submit().
+    """
+    from pathlib import Path
+
+    source = Path("src/grok_spicy/pipeline.py").read_text(encoding="utf-8")
+
+    # Find the generate_character_sheet.submit block
+    assert "generate_character_sheet.submit(" in source, (
+        "Could not find generate_character_sheet.submit() call in pipeline.py"
+    )
+
+    # Extract the block from .submit( to the matching closing )
+    start = source.index("generate_character_sheet.submit(")
+    # Find the end of the call — look for the list comprehension closing
+    block = source[start : start + 500]
+    assert "video_config=video_config" in block, (
+        "generate_character_sheet.submit() is missing video_config=video_config kwarg"
+    )

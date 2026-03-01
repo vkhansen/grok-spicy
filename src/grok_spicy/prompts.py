@@ -14,12 +14,15 @@ def character_stylize_prompt(
         f"{style}. Transform this photo into a full body character "
         f"portrait while preserving the person's exact facial features, "
         f"face shape, and likeness. Keep the following appearance details "
-        f"accurate: {visual_description}. "
-        f"Professional character design "
-        f"reference sheet style. Sharp details, even studio lighting."
+        f"accurate: {visual_description}."
     )
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
+        if (
+            video_config.narrative_core
+            and video_config.narrative_core.style_directive
+        ):
+            prompt += f" {video_config.narrative_core.style_directive}."
         if video_config.spicy_mode.enabled_modifiers:
             prompt += f" {' '.join(video_config.spicy_mode.enabled_modifiers)}"
     return prompt
@@ -30,12 +33,15 @@ def character_generate_prompt(
 ) -> str:
     prompt = (
         f"{style}. Full body character portrait of "
-        f"{visual_description}. "
-        f"Professional character design "
-        f"reference sheet style. Sharp details, even studio lighting."
+        f"{visual_description}."
     )
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
+        if (
+            video_config.narrative_core
+            and video_config.narrative_core.style_directive
+        ):
+            prompt += f" {video_config.narrative_core.style_directive}."
         if video_config.spicy_mode.enabled_modifiers:
             prompt += f" {' '.join(video_config.spicy_mode.enabled_modifiers)}"
     return prompt
@@ -121,12 +127,13 @@ def build_video_prompt(
     base = (
         f"{prompt_summary} "
         f"{camera}. {action}. "
-        f"{mood}. {style}. "
-        f"Smooth cinematic motion."
+        f"{mood}. {style}."
     )
     if video_config and video_config.spicy_mode.enabled:
         base = f"{video_config.spicy_mode.global_prefix}{base}"
         if video_config.narrative_core:
+            if video_config.narrative_core.style_directive:
+                base += f" {video_config.narrative_core.style_directive}."
             base += "\n\n**INVIOLABLE RULES:**\n"
             base += (
                 f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
@@ -154,13 +161,13 @@ def build_video_prompt(
         f"Phase 1 (0-{mid}s): {phase1}. "
         f"Phase 2 ({mid}-{duration_seconds}s): {phase2}. "
         f"{camera}. {mood}. "
-        f"Smooth cinematic motion throughout. "
-        f"Maintain: {action}. "
-        f"No sudden scene changes. No freeze frames. No unrelated motion."
+        f"Maintain: {action}."
     )
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
         if video_config.narrative_core:
+            if video_config.narrative_core.style_directive:
+                prompt += f" {video_config.narrative_core.style_directive}."
             prompt += "\n\n**INVIOLABLE RULES:**\n"
             prompt += (
                 f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
