@@ -543,14 +543,14 @@ def test_pipeline_passes_video_config_to_character_sheet():
     source = Path("src/grok_spicy/pipeline.py").read_text(encoding="utf-8")
 
     # Find the generate_character_sheet.submit block
-    assert "generate_character_sheet.submit(" in source, (
-        "Could not find generate_character_sheet.submit() call in pipeline.py"
-    )
+    assert (
+        "generate_character_sheet.submit(" in source
+    ), "Could not find generate_character_sheet.submit() call in pipeline.py"
 
     # Extract the block from .submit( to the matching closing )
     start = source.index("generate_character_sheet.submit(")
     # Find the end of the call — look for the list comprehension closing
     block = source[start : start + 500]
-    assert "video_config=video_config" in block, (
-        "generate_character_sheet.submit() is missing video_config=video_config kwarg"
-    )
+    assert (
+        "video_config=video_config" in block
+    ), "generate_character_sheet.submit() is missing video_config=video_config kwarg"

@@ -49,8 +49,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Install package
-        run: pip install -e .
+      - name: Install package (with web extras for test_web)
+        run: pip install -e ".[web]"
 
       - name: Run unit tests
         run: pytest tests/ --tb=short -q

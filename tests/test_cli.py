@@ -59,9 +59,7 @@ def test_parse_refs_empty():
 def test_prompt_file_reads_lines(monkeypatch, tmp_path):
     """--prompt-file parses --- separated blocks into concepts."""
     pf = tmp_path / "prompts.txt"
-    pf.write_text(
-        "A fox adventure\n---\n# comment\nAn owl story\n", encoding="utf-8"
-    )
+    pf.write_text("A fox adventure\n---\n# comment\nAn owl story\n", encoding="utf-8")
 
     monkeypatch.setattr(sys, "argv", ["grok-spicy", "--prompt-file", str(pf)])
     # Will exit(1) because no API key — but we can check concept parsing
@@ -81,9 +79,7 @@ def test_prompt_file_reads_lines(monkeypatch, tmp_path):
 def test_prompt_file_single_concept(monkeypatch, tmp_path):
     """--prompt-file without --- treats entire file as one concept."""
     pf = tmp_path / "prompts.txt"
-    pf.write_text(
-        "Scene 1: Fox enters\n\nScene 2: Owl watches\n", encoding="utf-8"
-    )
+    pf.write_text("Scene 1: Fox enters\n\nScene 2: Owl watches\n", encoding="utf-8")
 
     monkeypatch.setattr(sys, "argv", ["grok-spicy", "--prompt-file", str(pf)])
     captured_concepts: list[str] = []

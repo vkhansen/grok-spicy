@@ -18,10 +18,7 @@ def character_stylize_prompt(
     )
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
-        if (
-            video_config.narrative_core
-            and video_config.narrative_core.style_directive
-        ):
+        if video_config.narrative_core and video_config.narrative_core.style_directive:
             prompt += f" {video_config.narrative_core.style_directive}."
         if video_config.spicy_mode.enabled_modifiers:
             prompt += f" {' '.join(video_config.spicy_mode.enabled_modifiers)}"
@@ -31,16 +28,10 @@ def character_stylize_prompt(
 def character_generate_prompt(
     style: str, visual_description: str, video_config: VideoConfig | None = None
 ) -> str:
-    prompt = (
-        f"{style}. Full body character portrait of "
-        f"{visual_description}."
-    )
+    prompt = f"{style}. Full body character portrait of " f"{visual_description}."
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
-        if (
-            video_config.narrative_core
-            and video_config.narrative_core.style_directive
-        ):
+        if video_config.narrative_core and video_config.narrative_core.style_directive:
             prompt += f" {video_config.narrative_core.style_directive}."
         if video_config.spicy_mode.enabled_modifiers:
             prompt += f" {' '.join(video_config.spicy_mode.enabled_modifiers)}"
@@ -124,11 +115,7 @@ def build_video_prompt(
     duration_seconds: int,
     video_config: VideoConfig | None = None,
 ) -> str:
-    base = (
-        f"{prompt_summary} "
-        f"{camera}. {action}. "
-        f"{mood}. {style}."
-    )
+    base = f"{prompt_summary} " f"{camera}. {action}. " f"{mood}. {style}."
     if video_config and video_config.spicy_mode.enabled:
         base = f"{video_config.spicy_mode.global_prefix}{base}"
         if video_config.narrative_core:
