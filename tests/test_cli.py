@@ -57,9 +57,11 @@ def test_parse_refs_empty():
 
 
 def test_prompt_file_reads_lines(monkeypatch, tmp_path):
-    """--prompt-file parses non-blank, non-comment lines into concepts."""
+    """--prompt-file parses --- separated blocks into concepts."""
     pf = tmp_path / "prompts.txt"
-    pf.write_text("A fox adventure\n\n# comment\nAn owl story\n", encoding="utf-8")
+    pf.write_text(
+        "A fox adventure\n---\n# comment\nAn owl story\n", encoding="utf-8"
+    )
 
     monkeypatch.setattr(sys, "argv", ["grok-spicy", "--prompt-file", str(pf)])
     # Will exit(1) because no API key — but we can check concept parsing
@@ -74,6 +76,28 @@ def test_prompt_file_reads_lines(monkeypatch, tmp_path):
     monkeypatch.setattr("grok_spicy.pipeline.video_pipeline", fake_pipeline)
     main()
     assert captured_concepts == ["A fox adventure", "An owl story"]
+
+
+def test_prompt_file_single_concept(monkeypatch, tmp_path):
+    """--prompt-file without --- treats entire file as one concept."""
+    pf = tmp_path / "prompts.txt"
+    pf.write_text(
+        "Scene 1: Fox enters\n\nScene 2: Owl watches\n", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(sys, "argv", ["grok-spicy", "--prompt-file", str(pf)])
+    captured_concepts: list[str] = []
+
+    def fake_pipeline(concept, **kwargs):
+        captured_concepts.append(concept)
+        return "ok"
+
+    monkeypatch.setenv("GROK_API_KEY", "test-key")
+    monkeypatch.setattr("grok_spicy.pipeline.video_pipeline", fake_pipeline)
+    main()
+    assert len(captured_concepts) == 1
+    assert "Scene 1" in captured_concepts[0]
+    assert "Scene 2" in captured_concepts[0]
 
 
 def test_prompt_file_missing_exits(monkeypatch):

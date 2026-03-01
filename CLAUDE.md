@@ -203,8 +203,11 @@ python -m grok_spicy "A romantic encounter" --spicy --config examples/video-extr
 python -m grok_spicy "A fox and owl adventure" --dry-run
 python -m grok_spicy "A romance" --dry-run --spicy --ref "Alex=photo.jpg"
 
-# Run from a prompt file (one or more concepts)
+# Run from a prompt file (single concept, preserves blank lines/structure)
 python -m grok_spicy --prompt-file my_prompts.txt
+
+# Run from a prompt file with multiple concepts (separated by --- lines)
+python -m grok_spicy --prompt-file multi_prompts.txt
 
 # Pre-built StoryPlan JSON (skips ideation)
 python -m grok_spicy --script output/state.json
