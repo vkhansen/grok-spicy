@@ -103,14 +103,10 @@ def compose_keyframe(
         scene_camera=scene.camera,
         color_palette=plan.color_palette,
         char_lines=char_lines,
+        video_config=video_config,
     )
 
-    # Inject spicy modifiers into keyframe prompt
-    if video_config is not None:
-        spicy_suffix = ", ".join(video_config.spicy_mode.enabled_modifiers)
-        if spicy_suffix:
-            compose_prompt = f"{compose_prompt} {spicy_suffix}."
-            logger.info("Spicy modifiers injected into keyframe prompt")
+
 
     logger.info("Compose prompt: %s", compose_prompt)
 
@@ -122,12 +118,9 @@ def compose_keyframe(
         mood=scene.mood,
         style=plan.style,
         duration_seconds=scene.duration_seconds,
+        video_config=video_config,
     )
-    # Inject spicy modifiers into video prompt
-    if video_config is not None:
-        spicy_suffix = ", ".join(video_config.spicy_mode.enabled_modifiers)
-        if spicy_suffix:
-            video_prompt = f"{video_prompt} {spicy_suffix}."
+
 
     video_prompt = append_negative_prompt(video_prompt, config.negative_prompt)
     tier = (
@@ -189,7 +182,7 @@ def compose_keyframe(
         )
 
         # 3b: Vision consistency check
-        v_prompt = keyframe_vision_prompt()
+        v_prompt = keyframe_vision_prompt(scene, video_config)
         logger.info(
             "Scene %d vision check (model=%s, %d ref images): %s",
             scene.scene_id,

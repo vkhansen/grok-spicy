@@ -87,10 +87,7 @@ def generate_scene_video(
     )
     vid_prompt = keyframe.video_prompt
 
-    # Inject spicy global prefix if active
-    if video_config is not None and video_config.spicy_mode.global_prefix:
-        vid_prompt = f"{video_config.spicy_mode.global_prefix}{vid_prompt}"
-        logger.info("Spicy prefix injected into video prompt")
+
     vid_kw = dict(
         model=MODEL_VIDEO,
         image_url=keyframe.keyframe_url,
@@ -126,7 +123,7 @@ def generate_scene_video(
         len(scene_chars),
     )
 
-    v_prompt = video_vision_prompt()
+    v_prompt = video_vision_prompt(scene, video_config)
 
     def _check_consistency() -> ConsistencyScore:
         logger.info(

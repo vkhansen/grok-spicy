@@ -25,6 +25,7 @@ from grok_spicy.schemas import (
     CharacterAsset,
     ConsistencyScore,
     PipelineConfig,
+    VideoConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ def generate_character_sheet(
     aspect_ratio: str,
     reference_image_path: str | None = None,
     config: PipelineConfig | None = None,
+    video_config: VideoConfig | None = None,
 ) -> CharacterAsset:
     """Generate a verified character reference portrait.
 
@@ -78,7 +80,7 @@ def generate_character_sheet(
         )
 
         if reference_image_path:
-            prompt = character_stylize_prompt(style, character.visual_description)
+            prompt = character_stylize_prompt(style, character.visual_description, video_config)
             logger.info("Stylize prompt: %s", prompt)
             ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
             logger.debug("Encoded reference image to base64 data URI")
@@ -88,7 +90,7 @@ def generate_character_sheet(
                 aspect_ratio=aspect_ratio,
             )
         else:
-            prompt = character_generate_prompt(style, character.visual_description)
+            prompt = character_generate_prompt(style, character.visual_description, video_config)
             logger.info("Generate prompt: %s", prompt)
             sample_kw = dict(model=MODEL_IMAGE, aspect_ratio=aspect_ratio)
 
@@ -114,7 +116,7 @@ def generate_character_sheet(
         chat = client.chat.create(model=MODEL_REASONING)
         if reference_image_path:
             vision_prompt = character_vision_stylize_prompt(
-                character.visual_description
+                character
             )
             logger.info(
                 "Vision verify (ref comparison, model=%s, character=%r): %s",
@@ -131,7 +133,7 @@ def generate_character_sheet(
             )
         else:
             vision_prompt = character_vision_generate_prompt(
-                character.visual_description
+                character
             )
             logger.info(
                 "Vision verify (text-only, model=%s, character=%r): %s",

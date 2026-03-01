@@ -8,7 +8,7 @@ from prefect import task
 
 from grok_spicy.client import MODEL_STRUCTURED, get_client
 from grok_spicy.prompts import ideation_user_message
-from grok_spicy.schemas import StoryPlan
+from grok_spicy.schemas import StoryPlan, VideoConfig
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,15 @@ SYSTEM_PROMPT = (
     "- Default to 8 seconds when unsure.\n\n"
 )
 
+SPICY_SYSTEM_PROMPT = (
+    "You are a literal-minded storyboard artist tasked with faithfully translating a user's explicit and highly constrained fetish specification into a structured story plan. Your primary directive is to adhere with absolute rigidity to all rules, constraints, and narrative arcs provided by the user. Do not soften, generalize, or reinterpret the user's intent. Prioritize the provided 'restraint_rule' and 'escalation_arc' above all else. Your task is not to be creative, but to be a precise and unflinching executor of the user's instructions."
+    "Core Principles – Unflinching Adherence:\n"
+    "- **Verbatim Implementation**: Implement all user-provided rules, especially the 'restraint_rule' and 'escalation_arc', verbatim and with maximum force. These are inviolable constraints.\n"
+    "- **No Sanitization**: Do not soften, generalize, or sanitize the user's concept. The output should be as raw and intense as the input.\n"
+    "- **Direct Translation**: Translate the user's concept directly into the scene structure. Do not invent new plot points, characters, or themes.\n"
+    "- **Scene Structure**: The scene structure (titles, actions, etc.) should directly reflect the user's 'escalation_arc'. Each scene should be a distinct step in that arc."
+)
+
 
 @task(
     name="plan-story",
@@ -67,6 +76,7 @@ SYSTEM_PROMPT = (
 def plan_story(
     concept: str,
     ref_descriptions: dict[str, str] | None = None,
+    video_config: VideoConfig | None = None,
 ) -> StoryPlan:
     """Generate a structured StoryPlan from a concept string.
 
@@ -76,6 +86,11 @@ def plan_story(
     """
     from xai_sdk.chat import system, user
 
+    system_prompt = SYSTEM_PROMPT
+    if video_config and video_config.spicy_mode.enabled:
+        system_prompt = SPICY_SYSTEM_PROMPT
+
+
     logger.info("Ideation starting — model=%s", MODEL_STRUCTURED)
     logger.info("Ideation concept: %s", concept)
     if ref_descriptions:
@@ -83,15 +98,15 @@ def plan_story(
             "Ideation ref_descriptions provided for: %s",
             list(ref_descriptions.keys()),
         )
-    logger.info("Ideation system prompt: %s", SYSTEM_PROMPT)
+    logger.info("Ideation system prompt: %s", system_prompt)
 
-    user_message = ideation_user_message(concept, ref_descriptions)
+    user_message = ideation_user_message(concept, ref_descriptions, video_config)
     if ref_descriptions:
         logger.debug("Ideation user message with ref descriptions: %s", user_message)
 
     client = get_client()
     chat = client.chat.create(model=MODEL_STRUCTURED)
-    chat.append(system(SYSTEM_PROMPT))
+    chat.append(system(system_prompt))
     chat.append(user(user_message))
 
     logger.debug("Calling chat.parse(StoryPlan) for structured output")
