@@ -256,27 +256,70 @@ def main():
     # Re-configure logging now that we know the verbosity flag
     setup_logging(verbose=args.verbose)
 
-    # ─── --script mode: load pre-built StoryPlan ──────────────
+    # ─── --script mode: load pre-built StoryPlan or PipelineState ──
     script_plan = None
     if args.script:
         if not os.path.isfile(args.script):
             print(f"Error: script file not found: {args.script}", file=sys.stderr)
             sys.exit(1)
-        from grok_spicy.schemas import StoryPlan
+        from grok_spicy.schemas import PipelineState, StoryPlan
 
         with open(args.script, encoding="utf-8") as f:
             raw = f.read()
+        # Try PipelineState first (has resumability metadata), fall back to StoryPlan
         try:
-            script_plan = StoryPlan.model_validate_json(raw)
-        except Exception as exc:
-            print(f"Error: invalid script file: {exc}", file=sys.stderr)
-            sys.exit(1)
-        logger.info(
-            "Loaded script plan: title=%r, %d characters, %d scenes",
-            script_plan.title,
-            len(script_plan.characters),
-            len(script_plan.scenes),
-        )
+            saved_state = PipelineState.model_validate_json(raw)
+            script_plan = saved_state.plan
+            # Restore config and video_config from saved state if not
+            # overridden by CLI args
+            if saved_state.config is not None:
+                # Merge: CLI args override saved values, saved values fill gaps
+                if (
+                    args.consistency_threshold is None
+                    and saved_state.config.consistency_threshold != 0.80
+                ):
+                    config.consistency_threshold = (
+                        saved_state.config.consistency_threshold
+                    )
+                if (
+                    args.max_retries is None
+                    and saved_state.config.max_retries is not None
+                ):
+                    config.max_retries = saved_state.config.max_retries
+                if args.negative_prompt is None and saved_state.config.negative_prompt:
+                    config.negative_prompt = saved_state.config.negative_prompt
+                if args.style_override is None and saved_state.config.style_override:
+                    config.style_override = saved_state.config.style_override
+            if saved_state.video_config is not None and video_config is None:
+                video_config = saved_state.video_config
+                logger.info("Restored video_config from saved state")
+            if saved_state.character_refs and not character_refs:
+                character_refs = saved_state.character_refs
+                logger.info(
+                    "Restored character_refs from saved state: %s",
+                    list(saved_state.character_refs.keys()),
+                )
+            if saved_state.matched_refs and not character_refs:
+                character_refs = saved_state.matched_refs
+            logger.info(
+                "Loaded PipelineState: title=%r, %d characters, %d scenes",
+                script_plan.title,
+                len(script_plan.characters),
+                len(script_plan.scenes),
+            )
+        except Exception:
+            # Fall back to plain StoryPlan (backward compat)
+            try:
+                script_plan = StoryPlan.model_validate_json(raw)
+            except Exception as exc:
+                print(f"Error: invalid script file: {exc}", file=sys.stderr)
+                sys.exit(1)
+            logger.info(
+                "Loaded script plan (legacy StoryPlan): title=%r, %d characters, %d scenes",
+                script_plan.title,
+                len(script_plan.characters),
+                len(script_plan.scenes),
+            )
 
     # ─── --web mode: server only, no pipeline ─────────────────
     if args.web:

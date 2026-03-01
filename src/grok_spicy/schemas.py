@@ -223,6 +223,12 @@ class PipelineState(BaseModel):
     keyframes: list[KeyframeAsset] = []
     videos: list[VideoAsset] = []
     final_video_path: str | None = None
+    # Resumability metadata (optional for backward compat with old state.json)
+    run_id: int | str | None = None
+    config: PipelineConfig | None = None
+    video_config: VideoConfig | None = None
+    character_refs: dict[str, str] = Field(default_factory=dict)
+    matched_refs: dict[str, str] = Field(default_factory=dict)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -274,3 +280,7 @@ class VideoConfig(BaseModel):
     narrative_core: NarrativeCore | None = None
     characters: list[SpicyCharacter] = []
     default_video: DefaultVideo = DefaultVideo()
+
+
+# Rebuild PipelineState now that VideoConfig is defined (forward ref).
+PipelineState.model_rebuild()

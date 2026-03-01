@@ -7,6 +7,16 @@ from .schemas import Character, Scene, VideoConfig
 # ─── Step 2: Character sheets ───────────────────────────────
 
 
+def _deduplicated_modifiers(
+    modifiers: list[str], spicy_traits: list[str] | None
+) -> list[str]:
+    """Return modifiers that are not already covered by spicy_traits."""
+    if not spicy_traits:
+        return modifiers
+    trait_lower = {t.lower() for t in spicy_traits}
+    return [m for m in modifiers if m.lower() not in trait_lower]
+
+
 def character_stylize_prompt(
     style: str,
     visual_description: str,
@@ -32,8 +42,11 @@ def character_stylize_prompt(
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
         if video_config.narrative_core and video_config.narrative_core.style_directive:
             prompt += f" {video_config.narrative_core.style_directive}."
-        if video_config.spicy_mode.enabled_modifiers:
-            prompt += f" {' '.join(video_config.spicy_mode.enabled_modifiers)}"
+        unique_mods = _deduplicated_modifiers(
+            video_config.spicy_mode.enabled_modifiers, spicy_traits
+        )
+        if unique_mods:
+            prompt += f" {' '.join(unique_mods)}"
     return prompt
 
 
@@ -54,8 +67,11 @@ def character_generate_prompt(
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
         if video_config.narrative_core and video_config.narrative_core.style_directive:
             prompt += f" {video_config.narrative_core.style_directive}."
-        if video_config.spicy_mode.enabled_modifiers:
-            prompt += f" {' '.join(video_config.spicy_mode.enabled_modifiers)}"
+        unique_mods = _deduplicated_modifiers(
+            video_config.spicy_mode.enabled_modifiers, spicy_traits
+        )
+        if unique_mods:
+            prompt += f" {' '.join(unique_mods)}"
     return prompt
 
 

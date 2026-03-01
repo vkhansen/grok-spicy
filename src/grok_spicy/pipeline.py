@@ -86,7 +86,29 @@ def _match_character_refs(
     if not unmatched_refs:
         return matched
 
-    # Phase 2: LLM fallback matching
+    # Phase 2: substring matching (cheap heuristic before LLM)
+    unmatched_char_names = char_names - set(matched.keys())
+    still_unmatched: dict[str, str] = {}
+    for ref_label, ref_path in unmatched_refs.items():
+        found = False
+        for cname in unmatched_char_names:
+            if ref_label.lower() in cname.lower() or cname.lower() in ref_label.lower():
+                matched[cname] = ref_path
+                logger.info(
+                    "Ref match (substring): label=%r → character=%r",
+                    ref_label,
+                    cname,
+                )
+                found = True
+                break
+        if not found:
+            still_unmatched[ref_label] = ref_path
+
+    if not still_unmatched:
+        logger.info("All refs matched after substring phase")
+        return matched
+
+    # Phase 3: LLM fallback matching (with retry)
     unmatched_char_names = char_names - set(matched.keys())
     if not unmatched_char_names:
         logger.debug("All character names already matched, skipping LLM fallback")
@@ -97,40 +119,65 @@ def _match_character_refs(
         return matched
 
     logger.info(
-        "Phase 2: LLM fallback matching %d refs → %d characters",
-        len(unmatched_refs),
+        "Phase 3: LLM fallback matching %d refs → %d characters",
+        len(still_unmatched),
         len(unmatched_char_names),
     )
-    try:
-        from grok_spicy.client import MODEL_STRUCTURED, get_client
-        from grok_spicy.schemas import CharacterRefMapping
+    max_llm_attempts = 2
+    for attempt in range(1, max_llm_attempts + 1):
+        try:
+            from grok_spicy.client import MODEL_STRUCTURED, get_client
+            from grok_spicy.schemas import CharacterRefMapping
 
-        client = get_client()
-        char_info = [
-            {"name": c.name, "role": c.role}
-            for c in characters
-            if c.name in unmatched_char_names
-        ]
-        from xai_sdk.chat import user
+            client = get_client()
+            # Include visual_description snippets for better matching context
+            char_info = [
+                {
+                    "name": c.name,
+                    "role": c.role,
+                    "description_snippet": c.visual_description[:120],
+                }
+                for c in characters
+                if c.name in unmatched_char_names
+            ]
+            from xai_sdk.chat import user
 
-        ref_match_prompt = (
-            f"Map these uploaded reference image labels to story characters.\n"
-            f"Uploaded labels: {list(unmatched_refs.keys())}\n"
-            f"Characters: {char_info}\n"
-            f"Return a mapping from each label to the best-matching character name."
-        )
-        logger.info("LLM ref-matching prompt: %s", ref_match_prompt)
-        chat = client.chat.create(model=MODEL_STRUCTURED)
-        chat.append(user(ref_match_prompt))
-        _, result = chat.parse(CharacterRefMapping)
-        for label, char_name in result.mapping.items():
-            if label in unmatched_refs and char_name in unmatched_char_names:
-                matched[char_name] = unmatched_refs[label]
-                logger.info(
-                    "Ref match (LLM): label=%r → character=%r", label, char_name
-                )
-    except Exception:
-        logger.warning("LLM character ref matching failed", exc_info=True)
+            ref_match_prompt = (
+                f"Map these uploaded reference image labels to story characters.\n"
+                f"Uploaded labels: {list(still_unmatched.keys())}\n"
+                f"Characters: {char_info}\n"
+                f"Return a mapping from each label to the best-matching character name."
+            )
+            logger.info(
+                "LLM ref-matching prompt (attempt %d): %s", attempt, ref_match_prompt
+            )
+            chat = client.chat.create(model=MODEL_STRUCTURED)
+            chat.append(user(ref_match_prompt))
+            _, result = chat.parse(CharacterRefMapping)
+            for label, char_name in result.mapping.items():
+                if label in still_unmatched and char_name in unmatched_char_names:
+                    matched[char_name] = still_unmatched[label]
+                    logger.info(
+                        "Ref match (LLM): label=%r → character=%r", label, char_name
+                    )
+            break  # Success — exit retry loop
+        except Exception:
+            logger.warning(
+                "LLM character ref matching attempt %d/%d failed",
+                attempt,
+                max_llm_attempts,
+                exc_info=True,
+            )
+
+    # Warn about any refs that remain unmatched after all phases
+    final_matched_paths = set(matched.values())
+    for ref_label, ref_path in character_refs.items():
+        if ref_path not in final_matched_paths:
+            logger.warning(
+                "Reference image %r (%s) could not be matched to any character",
+                ref_label,
+                ref_path,
+            )
 
     logger.info("Final ref matching result: %d matched total", len(matched))
     return matched
@@ -179,9 +226,14 @@ def video_pipeline(
             f"characters={len(video_config.characters)} ==="
         )
 
-        # Resolve config character images and merge into character_refs
+        # Resolve config character images and merge into character_refs.
+        # Use a run-scoped staging directory (UUID) to prevent collision
+        # when multiple runs download the same config images concurrently.
+        import uuid
+
         from grok_spicy.config import resolve_character_images
 
+        staging_id = uuid.uuid4().hex[:8]
         resolved_images = resolve_character_images(video_config)
         for cfg_char in video_config.characters:
             imgs = resolved_images.get(cfg_char.id, [])
@@ -196,9 +248,9 @@ def video_pipeline(
                         first_img,
                     )
                 elif not config.dry_run:
-                    # Download URL to local cache (skip in dry-run)
+                    # Download URL to run-scoped staging (skip in dry-run)
                     safe = cfg_char.name.replace(" ", "_")
-                    dest = f"output/staging/references/{safe}_config.jpg"
+                    dest = f"output/staging/{staging_id}/references/{safe}_config.jpg"
                     try:
                         download(first_img, dest)
                         character_refs[cfg_char.name] = dest
@@ -255,7 +307,11 @@ def video_pipeline(
             logger.info("SCRIPT MODE: using pre-built plan, skipping ideation")
             print("=== SCRIPT MODE: Using provided plan (ideation skipped) ===")
             plan = script_plan
-            matched_refs: dict[str, str] = {}
+            # Use character_refs passed from caller (restored from state.json
+            # or provided via --ref) instead of hardcoding empty.
+            matched_refs = _match_character_refs(
+                character_refs, plan.characters, dry_run=config.dry_run
+            )
             print(
                 f"-> {plan.title}: {len(plan.characters)} chars, "
                 f"{len(plan.scenes)} scenes"
@@ -392,11 +448,12 @@ def video_pipeline(
                 scene.duration_seconds = clamped
 
         # ═══ STEP 2: CHARACTER SHEETS (parallel) ═══
-        # NOTE: Spicy traits (character.spicy_traits) are NOT baked into
-        # visual_description here.  They are injected at the prompt level
-        # inside character_stylize_prompt / character_generate_prompt only,
-        # keeping the canonical visual_description clean for the DB, vision
-        # checks, keyframes, and script output.
+        # INVARIANT: character.visual_description is NEVER mutated after
+        # ideation.  Spicy traits live in character.spicy_traits and are
+        # injected at the prompt level only (character_*_prompt functions
+        # use a local `desc` copy).  This keeps the canonical description
+        # clean for DB writes, vision checks, keyframes, and script output.
+        # Violating this invariant corrupts the DB (bug #6).
         logger.info("STEP 2: Character sheets — generating %d", len(plan.characters))
         print("=== STEP 2: Character sheets ===")
         char_futures = [
@@ -468,8 +525,17 @@ def video_pipeline(
         print(f"-> {script}")
         _notify(observer, "on_script", run_id, script)
 
-        # Save intermediate state
-        state = PipelineState(plan=plan, characters=characters, keyframes=keyframes)
+        # Save intermediate state (with resumability metadata)
+        state = PipelineState(
+            plan=plan,
+            characters=characters,
+            keyframes=keyframes,
+            run_id=run_id,
+            config=config,
+            video_config=video_config,
+            character_refs=character_refs or {},
+            matched_refs=matched_refs,
+        )
         _save_state(state, run_dir=config.run_dir)
 
         # ═══ STEP 5: VIDEOS (sequential) ═══
