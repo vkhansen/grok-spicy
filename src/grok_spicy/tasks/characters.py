@@ -73,7 +73,10 @@ def generate_character_sheet(
 
         if reference_image_path:
             gen_prompt = character_stylize_prompt(
-                style, character.visual_description, video_config
+                style,
+                character.visual_description,
+                video_config,
+                spicy_traits=character.spicy_traits or None,
             )
             vision_prompt = character_vision_stylize_prompt(character)
             write_prompt(
@@ -87,7 +90,10 @@ def generate_character_sheet(
             )
         else:
             gen_prompt = character_generate_prompt(
-                style, character.visual_description, video_config
+                style,
+                character.visual_description,
+                video_config,
+                spicy_traits=character.spicy_traits or None,
             )
             vision_prompt = character_vision_generate_prompt(character)
             write_prompt(
@@ -130,7 +136,10 @@ def generate_character_sheet(
 
         if reference_image_path:
             prompt = character_stylize_prompt(
-                style, character.visual_description, video_config
+                style,
+                character.visual_description,
+                video_config,
+                spicy_traits=character.spicy_traits or None,
             )
             logger.info("Stylize prompt: %s", prompt)
             ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
@@ -142,7 +151,10 @@ def generate_character_sheet(
             )
         else:
             prompt = character_generate_prompt(
-                style, character.visual_description, video_config
+                style,
+                character.visual_description,
+                video_config,
+                spicy_traits=character.spicy_traits or None,
             )
             logger.info("Generate prompt: %s", prompt)
             sample_kw = dict(model=MODEL_IMAGE, aspect_ratio=aspect_ratio)

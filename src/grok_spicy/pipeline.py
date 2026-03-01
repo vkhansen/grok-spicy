@@ -27,36 +27,6 @@ from grok_spicy.tasks.video import generate_scene_video
 logger = logging.getLogger(__name__)
 
 
-def _enrich_characters_from_config(plan: StoryPlan, video_config: VideoConfig) -> None:
-    """Merge spicy config traits/modifiers into plan characters (in-place).
-
-    For each plan character whose name matches a config character, append
-    spicy traits and global modifiers to their visual_description.
-    """
-    cfg_chars = {c.name.lower(): c for c in video_config.characters}
-    modifiers = video_config.spicy_mode.enabled_modifiers
-
-    for char in plan.characters:
-        cfg_char = cfg_chars.get(char.name.lower())
-        extras: list[str] = []
-        if cfg_char and cfg_char.spicy_traits:
-            extras.extend(cfg_char.spicy_traits)
-            logger.info(
-                "Enriching character %r with spicy traits: %s",
-                char.name,
-                cfg_char.spicy_traits,
-            )
-        if modifiers:
-            extras.extend(modifiers)
-        if extras:
-            char.visual_description = f"{char.visual_description}, {', '.join(extras)}"
-            logger.debug(
-                "Enriched visual_description for %r (%d chars)",
-                char.name,
-                len(char.visual_description),
-            )
-
-
 def _save_state(state: PipelineState, run_dir: str = "output") -> None:
     """Persist pipeline state to {run_dir}/state.json."""
     os.makedirs(run_dir, exist_ok=True)
@@ -421,11 +391,12 @@ def video_pipeline(
                 )
                 scene.duration_seconds = clamped
 
-        # ═══ SPICY: Enrich plan characters with config traits ═══
-        if video_config is not None:
-            _enrich_characters_from_config(plan, video_config)
-
         # ═══ STEP 2: CHARACTER SHEETS (parallel) ═══
+        # NOTE: Spicy traits (character.spicy_traits) are NOT baked into
+        # visual_description here.  They are injected at the prompt level
+        # inside character_stylize_prompt / character_generate_prompt only,
+        # keeping the canonical visual_description clean for the DB, vision
+        # checks, keyframes, and script output.
         logger.info("STEP 2: Character sheets — generating %d", len(plan.characters))
         print("=== STEP 2: Character sheets ===")
         char_futures = [

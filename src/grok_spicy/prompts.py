@@ -8,13 +8,25 @@ from .schemas import Character, Scene, VideoConfig
 
 
 def character_stylize_prompt(
-    style: str, visual_description: str, video_config: VideoConfig | None = None
+    style: str,
+    visual_description: str,
+    video_config: VideoConfig | None = None,
+    spicy_traits: list[str] | None = None,
 ) -> str:
+    # ── Spicy traits are injected HERE (character sheet generation only) ──
+    # visual_description is the frozen Step-1 value.  Per-character spicy
+    # traits are appended only for image-generation prompts so they guide
+    # the portrait without polluting the canonical description stored in
+    # the plan, DB, or vision-check prompts.
+    desc = visual_description
+    if spicy_traits:
+        desc = f"{desc}, {', '.join(spicy_traits)}"
+
     prompt = (
         f"{style}. Transform this photo into a full body character "
         f"portrait while preserving the person's exact facial features, "
         f"face shape, and likeness. Keep the following appearance details "
-        f"accurate: {visual_description}."
+        f"accurate: {desc}."
     )
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
@@ -26,9 +38,18 @@ def character_stylize_prompt(
 
 
 def character_generate_prompt(
-    style: str, visual_description: str, video_config: VideoConfig | None = None
+    style: str,
+    visual_description: str,
+    video_config: VideoConfig | None = None,
+    spicy_traits: list[str] | None = None,
 ) -> str:
-    prompt = f"{style}. Full body character portrait of " f"{visual_description}."
+    # ── Spicy traits are injected HERE (character sheet generation only) ──
+    # See comment in character_stylize_prompt for rationale.
+    desc = visual_description
+    if spicy_traits:
+        desc = f"{desc}, {', '.join(spicy_traits)}"
+
+    prompt = f"{style}. Full body character portrait of {desc}."
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
         if video_config.narrative_core and video_config.narrative_core.style_directive:
