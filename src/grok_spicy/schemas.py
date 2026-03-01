@@ -191,6 +191,7 @@ class PipelineConfig(BaseModel):
     max_duration: int = Field(default=15, ge=3, le=15)
     debug: bool = False
     dry_run: bool = False
+    run_dir: str = "output"
 
     @property
     def max_char_attempts(self) -> int:

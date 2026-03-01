@@ -54,6 +54,7 @@ def describe_reference_image(
             system_prompt=DESCRIBE_PROMPT,
             user_message=user_prompt,
             image_refs=[image_path],
+            run_dir=config.run_dir,
         )
         logger.info("Dry-run: wrote describe_ref prompt for %r", name)
         return CharacterDescription(

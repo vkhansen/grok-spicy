@@ -143,6 +143,7 @@ def compose_keyframe(
             prompt=compose_prompt,
             image_refs=ref_labels,
             api_params={"aspect_ratio": plan.aspect_ratio},
+            run_dir=config.run_dir,
         )
         write_prompt(
             "step3_keyframes",
@@ -153,6 +154,7 @@ def compose_keyframe(
                 "duration": scene.duration_seconds,
                 "tier": tier,
             },
+            run_dir=config.run_dir,
         )
         v_prompt = keyframe_vision_prompt(scene, video_config)
         write_prompt(
@@ -161,12 +163,13 @@ def compose_keyframe(
             model=MODEL_REASONING,
             prompt=v_prompt,
             image_refs=[f"{c.name} portrait" for c in scene_chars[:2]],
+            run_dir=config.run_dir,
         )
         logger.info("Dry-run: wrote keyframe prompts for scene %d", scene.scene_id)
         return KeyframeAsset(
             scene_id=scene.scene_id,
             keyframe_url="dry-run://placeholder",
-            keyframe_path=f"output/keyframes/scene_{scene.scene_id}_dry_run.jpg",
+            keyframe_path=f"{config.run_dir}/keyframes/scene_{scene.scene_id}_dry_run.jpg",
             consistency_score=1.0,
             generation_attempts=0,
             edit_passes=0,
@@ -222,7 +225,7 @@ def compose_keyframe(
 
         path = download(
             img.url,
-            f"output/keyframes/scene_{scene.scene_id}_v{iteration}.jpg",
+            f"{config.run_dir}/keyframes/scene_{scene.scene_id}_v{iteration}.jpg",
         )
 
         # 3b: Vision consistency check

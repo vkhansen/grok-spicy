@@ -17,6 +17,7 @@ def compile_script(
     plan: StoryPlan,
     characters: list[CharacterAsset],
     keyframes: list[KeyframeAsset],
+    run_dir: str = "output",
 ) -> str:
     """Compile assets into a human-readable markdown storyboard.
 
@@ -75,8 +76,8 @@ def compile_script(
             kf.consistency_score,
         )
 
-    path = "output/script.md"
-    os.makedirs("output", exist_ok=True)
+    path = f"{run_dir}/script.md"
+    os.makedirs(run_dir, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 

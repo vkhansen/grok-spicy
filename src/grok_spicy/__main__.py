@@ -77,8 +77,8 @@ def _parse_refs(raw_refs: list[str]) -> dict[str, str]:
             print(f"Warning: reference image not found: {path}", file=sys.stderr)
             continue
         safe_name = name.replace(" ", "_")
-        dest = f"output/references/{safe_name}.jpg"
-        os.makedirs("output/references", exist_ok=True)
+        dest = f"output/staging/references/{safe_name}.jpg"
+        os.makedirs("output/staging/references", exist_ok=True)
         shutil.copy2(path, dest)
         character_refs[name] = dest
     return character_refs
@@ -95,8 +95,9 @@ def main():
     parser.add_argument(
         "--prompt-file",
         metavar="FILE",
-        help="Read concepts from a text file (blocks separated by blank lines; "
-        "lines starting with # are comments)",
+        help="Read concepts from a text file. Use '---' lines to separate "
+        "multiple concepts; without '---', blank lines are separators "
+        "(legacy mode). Lines starting with # are comments.",
     )
     parser.add_argument("--output-dir", default="output", help="Output directory")
     parser.add_argument(
@@ -301,22 +302,35 @@ def main():
         if not os.path.isfile(path):
             print(f"Error: prompt file not found: {path}", file=sys.stderr)
             sys.exit(1)
-        # Parse prompt file: blank lines separate concepts, # lines are comments.
-        # Consecutive non-blank lines are joined with spaces into one concept.
+        # Parse prompt file: use "---" lines to separate multiple concepts.
+        # Without "---" separators, the entire file is one concept.
+        # Lines starting with # are always comments.
+        # Blank lines within a concept are preserved as newlines.
         with open(path, encoding="utf-8") as f:
             raw_lines = f.readlines()
+        has_separators = any(line.strip() == "---" for line in raw_lines)
         current_block: list[str] = []
         for line in raw_lines:
             stripped = line.strip()
-            if not stripped:
-                # Blank line = concept separator
+            if has_separators and stripped == "---":
+                # Explicit separator
                 if current_block:
-                    concepts.append(" ".join(current_block))
+                    concepts.append("\n".join(current_block))
                     current_block = []
-            elif not stripped.startswith("#"):
-                current_block.append(stripped)
+            elif stripped.startswith("#"):
+                continue
+            else:
+                # Preserve blank lines within a concept as newlines
+                if stripped:
+                    current_block.append(stripped)
+                elif current_block:
+                    current_block.append("")
         if current_block:
-            concepts.append(" ".join(current_block))
+            # Strip trailing blank lines from the last block
+            while current_block and not current_block[-1]:
+                current_block.pop()
+            if current_block:
+                concepts.append("\n".join(current_block))
         if not concepts:
             print(f"Error: no prompts found in {path}", file=sys.stderr)
             sys.exit(1)
@@ -341,7 +355,7 @@ def main():
 
     # Environment validation (skip in dry-run mode)
     if config.dry_run:
-        print("=== DRY-RUN MODE: writing prompts to output/dry_run/ ===")
+        print("=== DRY-RUN MODE: writing prompts (output/runs/<id>/prompts/) ===")
     else:
         api_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
         if not api_key:

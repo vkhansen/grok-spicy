@@ -132,8 +132,8 @@ async def create_run(
         name = name.strip() if name else ""
         if name and upload and upload.filename:
             safe_name = name.replace(" ", "_")
-            path = f"output/references/{run_id}_{safe_name}.jpg"
-            os.makedirs("output/references", exist_ok=True)
+            path = f"output/runs/{run_id}/references/{safe_name}.jpg"
+            os.makedirs(f"output/runs/{run_id}/references", exist_ok=True)
             content = await upload.read()
             with open(path, "wb") as f:
                 f.write(content)
@@ -191,6 +191,46 @@ def _start_pipeline_thread(
 # ─── SSE stream ──────────────────────────────────────────────
 
 
+def _render_sse_html(event: Event) -> str:
+    """Render an SSE event's data as an HTML card fragment for htmx swap."""
+    d = event.data
+    if event.type == "character":
+        score_pct = int(d.get("consistency_score", 0) * 100)
+        path = d.get("portrait_path", "")
+        name = d.get("name", "")
+        return (
+            f'<div class="card">'
+            f'<img src="/{path}" alt="{name}">'
+            f"<h3>{name}</h3>"
+            f"<p>Score: {score_pct}%</p>"
+            f"</div>"
+        )
+    if event.type == "keyframe":
+        score_pct = int(d.get("consistency_score", 0) * 100)
+        path = d.get("keyframe_path", "")
+        scene_id = d.get("scene_id", "")
+        return (
+            f'<div class="card">'
+            f'<img src="/{path}" alt="Scene {scene_id}">'
+            f"<h3>Scene {scene_id}</h3>"
+            f"<p>Score: {score_pct}%</p>"
+            f"</div>"
+        )
+    if event.type == "video":
+        score_pct = int(d.get("consistency_score", 0) * 100)
+        path = d.get("video_path", "")
+        scene_id = d.get("scene_id", "")
+        return (
+            f'<div class="card">'
+            f'<video src="/{path}" autoplay loop muted playsinline></video>'
+            f"<h3>Scene {scene_id}</h3>"
+            f"<p>Score: {score_pct}%</p>"
+            f"</div>"
+        )
+    # For non-swappable events (complete, error, plan, etc.), send JSON
+    return json.dumps(d)
+
+
 @app.get("/sse/{run_id}")
 async def sse_stream(run_id: int):
     logger.info("SSE stream opened for run_id=%d", run_id)
@@ -202,7 +242,8 @@ async def sse_stream(run_id: int):
                 event = await queue.get()
                 if event.run_id == run_id:
                     logger.debug("SSE sending: run=%d, type=%s", run_id, event.type)
-                    yield f"event: {event.type}\ndata: {json.dumps(event.data)}\n\n"
+                    data = _render_sse_html(event)
+                    yield f"event: {event.type}\ndata: {data}\n\n"
                     if event.type in ("complete", "error"):
                         logger.info(
                             "SSE stream closing for run_id=%d (type=%s)",

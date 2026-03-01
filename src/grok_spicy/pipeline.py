@@ -57,10 +57,10 @@ def _enrich_characters_from_config(plan: StoryPlan, video_config: VideoConfig) -
             )
 
 
-def _save_state(state: PipelineState) -> None:
-    """Persist pipeline state to output/state.json."""
-    os.makedirs("output", exist_ok=True)
-    path = "output/state.json"
+def _save_state(state: PipelineState, run_dir: str = "output") -> None:
+    """Persist pipeline state to {run_dir}/state.json."""
+    os.makedirs(run_dir, exist_ok=True)
+    path = f"{run_dir}/state.json"
     with open(path, "w", encoding="utf-8") as f:
         f.write(state.model_dump_json(indent=2))
     logger.debug("Pipeline state saved to %s", path)
@@ -228,7 +228,7 @@ def video_pipeline(
                 elif not config.dry_run:
                     # Download URL to local cache (skip in dry-run)
                     safe = cfg_char.name.replace(" ", "_")
-                    dest = f"output/references/{safe}_config.jpg"
+                    dest = f"output/staging/references/{safe}_config.jpg"
                     try:
                         download(first_img, dest)
                         character_refs[cfg_char.name] = dest
@@ -247,6 +247,37 @@ def video_pipeline(
 
     run_id = observer.on_run_start(concept)
     logger.info("Run ID assigned: %d", run_id)
+
+    # ═══ COMPUTE PER-RUN DIRECTORY ═══
+    if run_id > 0:
+        # Web runs: use DB run_id
+        config.run_dir = f"output/runs/{run_id}"
+    else:
+        # CLI runs: use ISO timestamp
+        from datetime import UTC, datetime
+
+        ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        config.run_dir = f"output/runs/{ts}"
+    os.makedirs(config.run_dir, exist_ok=True)
+    logger.info("Run directory: %s", config.run_dir)
+
+    # Relocate staging references into run directory
+    if character_refs:
+        run_refs_dir = f"{config.run_dir}/references"
+        os.makedirs(run_refs_dir, exist_ok=True)
+        import shutil
+
+        updated_refs: dict[str, str] = {}
+        for ref_name, ref_path in character_refs.items():
+            dest = os.path.join(run_refs_dir, os.path.basename(ref_path))
+            if os.path.isfile(ref_path):
+                shutil.copy2(ref_path, dest)
+                updated_refs[ref_name] = dest
+                logger.debug("Relocated ref %r: %s → %s", ref_name, ref_path, dest)
+            else:
+                updated_refs[ref_name] = ref_path
+                logger.debug("Ref %r path not found, keeping: %s", ref_name, ref_path)
+        character_refs = updated_refs
 
     try:
         if script_plan is not None:
@@ -288,17 +319,14 @@ def video_pipeline(
             logger.info("STEP 1: Ideation — generating story plan")
             print("=== STEP 1: Planning story ===")
 
-            # When spicy mode is active, augment the concept with config context
-            ideation_concept = concept
-            if video_config is not None:
-                from grok_spicy.prompt_builder import build_spicy_prompt
-
-                spicy_prompt = build_spicy_prompt(video_config)
-                ideation_concept = f"{concept}\n\nSpicy mode context: {spicy_prompt}"
-                logger.info("Augmented concept with spicy prompt for ideation")
-
+            # video_config is passed to plan_story() which injects
+            # global_prefix, INVIOLABLE RULES, and SPICY MODIFIERS via
+            # ideation_user_message() and activates SPICY_SYSTEM_PROMPT.
             plan = plan_story(
-                ideation_concept, ref_descriptions=ref_descriptions, config=config
+                concept,
+                ref_descriptions=ref_descriptions,
+                config=config,
+                video_config=video_config,
             )
             logger.info(
                 "STEP 1 complete: title=%r, characters=%d, scenes=%d, "
@@ -464,14 +492,14 @@ def video_pipeline(
         # ═══ STEP 4: SCRIPT ═══
         logger.info("STEP 4: Script compilation")
         print("=== STEP 4: Script ===")
-        script = compile_script(plan, characters, keyframes)
+        script = compile_script(plan, characters, keyframes, run_dir=config.run_dir)
         logger.info("STEP 4 complete: script=%s", script)
         print(f"-> {script}")
         _notify(observer, "on_script", run_id, script)
 
         # Save intermediate state
         state = PipelineState(plan=plan, characters=characters, keyframes=keyframes)
-        _save_state(state)
+        _save_state(state, run_dir=config.run_dir)
 
         # ═══ STEP 5: VIDEOS (sequential) ═══
         logger.info("STEP 5: Video generation — %d scenes", len(plan.scenes))
@@ -526,32 +554,33 @@ def video_pipeline(
             # Collect all prompt files and write summary
             import glob as globmod
 
-            from grok_spicy.dry_run import DRY_RUN_DIR, write_summary
+            from grok_spicy.dry_run import write_summary
 
+            prompts_dir = os.path.join(config.run_dir, "prompts")
             prompt_files = sorted(
-                globmod.glob(os.path.join(DRY_RUN_DIR, "**", "*.md"), recursive=True)
+                globmod.glob(os.path.join(prompts_dir, "**", "*.md"), recursive=True)
             )
-            summary_path = write_summary(prompt_files)
+            summary_path = write_summary(prompt_files, run_dir=config.run_dir)
             logger.info("Dry-run summary written to %s", summary_path)
             print(f"-> Summary: {summary_path}")
 
             # Save state (with placeholder paths)
             state.videos = videos
-            _save_state(state)
+            _save_state(state, run_dir=config.run_dir)
 
             _notify(observer, "on_complete", run_id, summary_path)
             return summary_path
         else:
             logger.info("STEP 6: Assembly — %d clips", len(videos))
             print("=== STEP 6: Assembly ===")
-            final = assemble_final_video(videos)
+            final = assemble_final_video(videos, run_dir=config.run_dir)
             logger.info("STEP 6 complete: final_video=%s", final)
             print(f"-> {final}")
 
             # Save final state
             state.videos = videos
             state.final_video_path = final
-            _save_state(state)
+            _save_state(state, run_dir=config.run_dir)
 
             _notify(observer, "on_complete", run_id, final)
 

@@ -259,6 +259,15 @@ def ideation_user_message(
 
     if video_config and video_config.spicy_mode.enabled:
         msg = f"{video_config.spicy_mode.global_prefix}{msg}"
+
+        # Inject character descriptions and spicy traits from config
+        if video_config.characters:
+            msg += "\n\n**CONFIG CHARACTERS (use these names and descriptions):**\n"
+            for cfg_char in video_config.characters:
+                msg += f"- **{cfg_char.name}**: {cfg_char.description}\n"
+                if cfg_char.spicy_traits:
+                    msg += f"  Spicy traits: {', '.join(cfg_char.spicy_traits)}\n"
+
         if video_config.narrative_core:
             msg += "\n\n**INVIOLABLE RULES:**\n"
             msg += (
@@ -267,6 +276,20 @@ def ideation_user_message(
             msg += (
                 f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
             )
+            if video_config.narrative_core.style_directive:
+                msg += f"- **Style Directive**: {video_config.narrative_core.style_directive}\n"
+
+        # Inject default video settings (scene, motion, audio)
+        dv = video_config.default_video
+        if dv.scene or dv.motion or dv.audio_cues:
+            msg += "\n**DEFAULT VIDEO SETTINGS (incorporate into scenes):**\n"
+            if dv.scene:
+                msg += f"- **Scene/Setting**: {dv.scene}\n"
+            if dv.motion:
+                msg += f"- **Motion**: {dv.motion}\n"
+            if dv.audio_cues:
+                msg += f"- **Audio Cues**: {dv.audio_cues}\n"
+
         if video_config.spicy_mode.enabled_modifiers:
             msg += f"\n**SPICY MODIFIERS:**\n- {'\n- '.join(video_config.spicy_mode.enabled_modifiers)}\n"
 

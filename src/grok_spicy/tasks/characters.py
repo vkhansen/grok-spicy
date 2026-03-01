@@ -83,6 +83,7 @@ def generate_character_sheet(
                 prompt=gen_prompt,
                 image_refs=[reference_image_path],
                 api_params={"aspect_ratio": aspect_ratio},
+                run_dir=config.run_dir,
             )
         else:
             gen_prompt = character_generate_prompt(
@@ -95,18 +96,20 @@ def generate_character_sheet(
                 model=MODEL_IMAGE,
                 prompt=gen_prompt,
                 api_params={"aspect_ratio": aspect_ratio},
+                run_dir=config.run_dir,
             )
         write_prompt(
             "step2_characters",
             f"{character.name}_vision_check",
             model=MODEL_REASONING,
             prompt=vision_prompt,
+            run_dir=config.run_dir,
         )
         logger.info("Dry-run: wrote character prompts for %r", character.name)
         return CharacterAsset(
             name=character.name,
             portrait_url="dry-run://placeholder",
-            portrait_path=f"output/character_sheets/{character.name}_dry_run.jpg",
+            portrait_path=f"{config.run_dir}/characters/{character.name}_dry_run.jpg",
             visual_description=character.visual_description,
             consistency_score=1.0,
             generation_attempts=0,
@@ -159,7 +162,7 @@ def generate_character_sheet(
         logger.debug("Image generated, URL=%s", img.url[:80])
         path = download(
             img.url,
-            f"output/character_sheets/{character.name}_v{attempt}.jpg",
+            f"{config.run_dir}/characters/{character.name}_v{attempt}.jpg",
         )
 
         # Vision verify

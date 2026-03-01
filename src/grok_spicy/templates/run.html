@@ -15,7 +15,7 @@
     <div class="grid" id="characters" sse-swap="character" hx-swap="beforeend">
         {% for c in run.character_assets %}
         <div class="card">
-            <img src="/output/{{ c.portrait_path }}" alt="{{ c.name }}">
+            <img src="/{{ c.portrait_path }}" alt="{{ c.name }}">
             <h3>{{ c.name }}</h3>
             <p>Score: {{ "%.0f"|format(c.consistency_score * 100) }}%</p>
         </div>
@@ -26,7 +26,7 @@
     <div class="grid" id="keyframes" sse-swap="keyframe" hx-swap="beforeend">
         {% for kf in run.keyframe_assets %}
         <div class="card">
-            <img src="/output/{{ kf.keyframe_path }}" alt="Scene {{ kf.scene_id }}">
+            <img src="/{{ kf.keyframe_path }}" alt="Scene {{ kf.scene_id }}">
             <h3>Scene {{ kf.scene_id }}</h3>
             <p>Score: {{ "%.0f"|format(kf.consistency_score * 100) }}%</p>
         </div>
@@ -37,7 +37,7 @@
     <div class="grid" id="videos" sse-swap="video" hx-swap="beforeend">
         {% for v in run.video_assets %}
         <div class="card">
-            <video src="/output/{{ v.video_path }}" autoplay loop muted playsinline></video>
+            <video src="/{{ v.video_path }}" autoplay loop muted playsinline></video>
             <h3>Scene {{ v.scene_id }}</h3>
             <p>Score: {{ "%.0f"|format(v.consistency_score * 100) }}%</p>
         </div>
@@ -46,7 +46,7 @@
 
     {% if run.final_video_path %}
     <h2>Final Video</h2>
-    <video src="/output/{{ run.final_video_path }}" controls autoplay loop
+    <video src="/{{ run.final_video_path }}" controls autoplay loop
            style="max-width: 720px; margin-top: 0.5rem;"></video>
     {% endif %}
 

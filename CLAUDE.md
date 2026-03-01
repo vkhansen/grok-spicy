@@ -105,6 +105,21 @@ grok-spicy/
 ├── docs/
 │   └── features/                # Feature cards (01-14, numbered)
 ├── output/                      # Generated assets (gitignored)
+│   ├── grok_spicy.db            # Shared SQLite database
+│   ├── staging/                 # Temporary pre-run-id files
+│   │   └── references/          # CLI --ref and spicy config image downloads
+│   └── runs/
+│       └── {run_id}/            # Per-run directory (DB id or timestamp)
+│           ├── state.json
+│           ├── script.md
+│           ├── concat.txt
+│           ├── final.mp4
+│           ├── characters/      # Character reference portraits
+│           ├── keyframes/
+│           ├── videos/
+│           ├── frames/
+│           ├── references/      # Copied from staging at run start
+│           └── prompts/         # Dry-run prompt files
 └── tests/
 ```
 

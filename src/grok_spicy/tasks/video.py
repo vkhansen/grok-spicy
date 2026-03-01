@@ -94,6 +94,7 @@ def generate_scene_video(
                 "aspect_ratio": "16:9",
                 "tier": tier,
             },
+            run_dir=config.run_dir,
         )
         v_prompt = video_vision_prompt(scene, video_config)
         scene_chars = [char_map[n] for n in scene.characters_present if n in char_map]
@@ -103,6 +104,7 @@ def generate_scene_video(
             model=MODEL_REASONING,
             prompt=v_prompt,
             image_refs=[f"{c.name} portrait" for c in scene_chars[:2]],
+            run_dir=config.run_dir,
         )
         if correction_eligible:
             write_prompt(
@@ -112,15 +114,16 @@ def generate_scene_video(
                 prompt="[DRY-RUN] Correction prompt would be generated from "
                 "vision check issues (video_fix_prompt)",
                 api_params={"video_url": "current_video_url"},
+                run_dir=config.run_dir,
             )
         logger.info("Dry-run: wrote video prompts for scene %d", scene.scene_id)
         return VideoAsset(
             scene_id=scene.scene_id,
             video_url="dry-run://placeholder",
-            video_path=f"output/videos/scene_{scene.scene_id}_dry_run.mp4",
+            video_path=f"{config.run_dir}/videos/scene_{scene.scene_id}_dry_run.mp4",
             duration=float(scene.duration_seconds),
-            first_frame_path=f"output/frames/scene_{scene.scene_id}_first_dry_run.jpg",
-            last_frame_path=f"output/frames/scene_{scene.scene_id}_last_dry_run.jpg",
+            first_frame_path=f"{config.run_dir}/frames/scene_{scene.scene_id}_first_dry_run.jpg",
+            last_frame_path=f"{config.run_dir}/frames/scene_{scene.scene_id}_last_dry_run.jpg",
             consistency_score=1.0,
             correction_passes=0,
         )
@@ -150,14 +153,14 @@ def generate_scene_video(
             f"Scene {scene.scene_id}: video still moderated after rewords"
         )
 
-    video_path = f"output/videos/scene_{scene.scene_id}.mp4"
+    video_path = f"{config.run_dir}/videos/scene_{scene.scene_id}.mp4"
     download(vid.url, video_path)
     current_url = vid.url
     logger.info("Scene %d: initial video downloaded → %s", scene.scene_id, video_path)
 
     # 5b: Extract frames
-    first_frame = f"output/frames/scene_{scene.scene_id}_first.jpg"
-    last_frame = f"output/frames/scene_{scene.scene_id}_last.jpg"
+    first_frame = f"{config.run_dir}/frames/scene_{scene.scene_id}_first.jpg"
+    last_frame = f"{config.run_dir}/frames/scene_{scene.scene_id}_last.jpg"
     logger.debug("Scene %d: extracting first and last frames", scene.scene_id)
     extract_frame(video_path, first_frame, "first")
     extract_frame(video_path, last_frame, "last")
@@ -243,7 +246,7 @@ def generate_scene_video(
             break
 
         current_url = vid.url
-        corr_path = f"output/videos/scene_{scene.scene_id}_c{corrections}.mp4"
+        corr_path = f"{config.run_dir}/videos/scene_{scene.scene_id}_c{corrections}.mp4"
         download(vid.url, corr_path)
         video_path = corr_path
         logger.debug(
@@ -299,7 +302,7 @@ def generate_scene_video(
             client.video.generate, retry_prompt, **vid_kw
         )
         if not still_moderated:
-            retry_path = f"output/videos/scene_{scene.scene_id}_retry.mp4"
+            retry_path = f"{config.run_dir}/videos/scene_{scene.scene_id}_retry.mp4"
             download(vid.url, retry_path)
             video_path = retry_path
             current_url = vid.url

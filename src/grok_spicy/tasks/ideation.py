@@ -37,8 +37,14 @@ SYSTEM_PROMPT = (
     "- Each scene description should answer: What happens? What changes? What do characters DO and FEEL?\n"
     "- Use vivid action verbs and concrete narrative beats, not poses or outfit descriptions.\n\n"
     "Scene & Video Structure Rules:\n"
-    "- Limit total scenes to 3–6 (ideally 4–5) to maintain quality and coherence in short videos.\n"
-    "- Design each scene as an ~6–10 second clip with **one clear, focused primary action/motion** suitable for smooth animation.\n"
+    "- **CRITICAL — Pre-defined scenes**: If the user's concept explicitly defines numbered scenes "
+    "(e.g., 'Scene 1 – ...', 'Scene 2 – ...'), you MUST preserve that EXACT scene structure: "
+    "same number of scenes, same boundaries, same sequence. Do NOT subdivide, merge, or "
+    "reorder user-defined scenes. Use the user's scene durations if specified. "
+    "Your job is to fill in the structured fields (camera, mood, action, prompt_summary, etc.) "
+    "for each user-defined scene — not to reinvent the scene breakdown.\n"
+    "- If the user does NOT define explicit scenes, limit total scenes to 3–6 (ideally 4–5).\n"
+    "- Design each scene as a clip with **one clear, focused primary action/motion** suitable for smooth animation.\n"
     "- Each scene must contain:\n"
     "  • Sequential scene number & title (e.g., Scene 1: Arrival)\n"
     "  • Setting/location (derived from concept)\n"
@@ -65,12 +71,31 @@ SYSTEM_PROMPT = (
 )
 
 SPICY_SYSTEM_PROMPT = (
-    "You are a literal-minded storyboard artist tasked with faithfully translating a user's explicit and highly constrained fetish specification into a structured story plan. Your primary directive is to adhere with absolute rigidity to all rules, constraints, and narrative arcs provided by the user. Do not soften, generalize, or reinterpret the user's intent. Prioritize the provided 'restraint_rule' and 'escalation_arc' above all else. Your task is not to be creative, but to be a precise and unflinching executor of the user's instructions."
+    "You are a literal-minded storyboard artist tasked with faithfully translating a user's explicit and highly constrained specification into a structured story plan. "
+    "Your primary directive is to adhere with absolute rigidity to all rules, constraints, and narrative arcs provided by the user. "
+    "Do not soften, generalize, or reinterpret the user's intent. "
+    "Prioritize the provided 'restraint_rule' and 'escalation_arc' above all else. "
+    "Your task is not to be creative, but to be a precise and unflinching executor of the user's instructions.\n\n"
     "Core Principles – Unflinching Adherence:\n"
     "- **Verbatim Implementation**: Implement all user-provided rules, especially the 'restraint_rule' and 'escalation_arc', verbatim and with maximum force. These are inviolable constraints.\n"
     "- **No Sanitization**: Do not soften, generalize, or sanitize the user's concept. The output should be as raw and intense as the input.\n"
     "- **Direct Translation**: Translate the user's concept directly into the scene structure. Do not invent new plot points, characters, or themes.\n"
-    "- **Scene Structure**: The scene structure (titles, actions, etc.) should directly reflect the user's 'escalation_arc'. Each scene should be a distinct step in that arc."
+    "- **No Invention**: Do NOT invent character visual details (age, ethnicity, hair color, eye color) that are not in the concept or reference descriptions. "
+    "If no visual reference is provided, use ONLY what the concept states — leave unspecified details generic.\n\n"
+    "Scene Structure – Preserve User-Defined Scenes:\n"
+    "- **CRITICAL**: If the user's concept explicitly defines numbered scenes (e.g., 'Scene 1 – ...', 'Scene 2 – ...'), "
+    "you MUST preserve that EXACT scene structure: same number of scenes, same boundaries, same sequence, same durations. "
+    "Do NOT subdivide, merge, reorder, or omit any user-defined scene.\n"
+    "- Copy the user's scene titles, actions, sequences, and style directives faithfully into the corresponding fields.\n"
+    "- Use the user's specified durations (e.g., '18–22 seconds' → duration_seconds=20). If a range is given, use the midpoint.\n"
+    "- If the user does NOT define explicit scenes, derive scene structure from the 'escalation_arc'. Each scene should be a distinct step in that arc.\n\n"
+    "Detail Preservation:\n"
+    "- The scene's 'description' field MUST capture ALL narrative beats, sequence steps, and progression details from the user's scene text. "
+    "Do not summarize — include every action, every progression step, every sensory detail.\n"
+    "- The 'action' field should capture the PRIMARY physical motion for video generation, using semicolons to separate phases for scenes >8s.\n"
+    "- The 'prompt_summary' field should distill the CULMINATING visual beat of the scene in ≤30 words.\n"
+    "- Include ALL user-specified style/camera/lighting/audio directives in the appropriate fields.\n"
+    "- Copy spicy_traits from the config verbatim into character spicy_traits.\n"
 )
 
 
@@ -169,6 +194,7 @@ def plan_story(
             model=MODEL_STRUCTURED,
             system_prompt=system_prompt,
             user_message=user_message,
+            run_dir=config.run_dir,
         )
         logger.info("Dry-run: wrote ideation prompts")
         result = _mock_story_plan(concept, ref_descriptions)

@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 @task(name="assemble-video")
-def assemble_final_video(videos: list[VideoAsset]) -> str:
-    """Normalize all scene clips and concatenate into final_video.mp4."""
+def assemble_final_video(videos: list[VideoAsset], run_dir: str = "output") -> str:
+    """Normalize all scene clips and concatenate into final.mp4."""
     sorted_vids = sorted(videos, key=lambda v: v.scene_id)
-    os.makedirs("output", exist_ok=True)
-    final = "output/final_video.mp4"
+    os.makedirs(run_dir, exist_ok=True)
+    final = f"{run_dir}/final.mp4"
 
     logger.info("Assembly starting: %d video clip(s)", len(sorted_vids))
     for v in sorted_vids:
@@ -73,7 +73,7 @@ def assemble_final_video(videos: list[VideoAsset]) -> str:
         norm_paths.append(norm)
 
     # Write concat file
-    concat_file = "output/concat.txt"
+    concat_file = f"{run_dir}/concat.txt"
     with open(concat_file, "w") as f:
         for p in norm_paths:
             f.write(f"file '{os.path.abspath(p)}'\n")
