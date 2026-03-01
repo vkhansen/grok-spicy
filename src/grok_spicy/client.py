@@ -162,6 +162,7 @@ def reword_prompt(prompt: str) -> str:
 def generate_with_moderation_retry(
     generate_fn: Callable[..., Any],
     prompt: str,
+    *,
     max_rewords: int = MAX_REWORD_ATTEMPTS,
     **generate_kw: Any,
 ) -> tuple[Any, str, bool]:

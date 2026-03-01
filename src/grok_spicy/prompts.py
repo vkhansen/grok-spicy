@@ -1,8 +1,8 @@
 """Prompt builders -- pure functions, one per pipeline prompt."""
 
 from __future__ import annotations
-from .schemas import Character, Scene, VideoConfig
 
+from .schemas import Character, Scene, VideoConfig
 
 # ─── Step 2: Character sheets ───────────────────────────────
 
@@ -25,7 +25,6 @@ def character_stylize_prompt(
     return prompt
 
 
-
 def character_generate_prompt(
     style: str, visual_description: str, video_config: VideoConfig | None = None
 ) -> str:
@@ -40,7 +39,6 @@ def character_generate_prompt(
         if video_config.spicy_mode.enabled_modifiers:
             prompt += f" {' '.join(video_config.spicy_mode.enabled_modifiers)}"
     return prompt
-
 
 
 def character_vision_stylize_prompt(character: Character) -> str:
@@ -58,7 +56,6 @@ def character_vision_stylize_prompt(character: Character) -> str:
     return prompt
 
 
-
 def character_vision_generate_prompt(character: Character) -> str:
     prompt = (
         f"Score how well this portrait matches the description. "
@@ -70,7 +67,6 @@ def character_vision_generate_prompt(character: Character) -> str:
         prompt += "\n\n**Critically, check for the following specific details:**\n"
         prompt += "\n".join(f"- {trait}" for trait in character.spicy_traits)
     return prompt
-
 
 
 # ─── Step 3: Keyframes ─────────────────────────────────────
@@ -101,13 +97,16 @@ def keyframe_compose_prompt(
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
         if video_config.narrative_core:
-            prompt += f"\n\n**INVIOLABLE RULES:**\n"
-            prompt += f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
-            prompt += f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+            prompt += "\n\n**INVIOLABLE RULES:**\n"
+            prompt += (
+                f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
+            )
+            prompt += (
+                f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+            )
         if video_config.spicy_mode.enabled_modifiers:
             prompt += f"\n**SPICY MODIFIERS:**\n- {'\n- '.join(video_config.spicy_mode.enabled_modifiers)}\n"
     return prompt
-
 
 
 def build_video_prompt(
@@ -128,9 +127,13 @@ def build_video_prompt(
     if video_config and video_config.spicy_mode.enabled:
         base = f"{video_config.spicy_mode.global_prefix}{base}"
         if video_config.narrative_core:
-            base += f"\n\n**INVIOLABLE RULES:**\n"
-            base += f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
-            base += f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+            base += "\n\n**INVIOLABLE RULES:**\n"
+            base += (
+                f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
+            )
+            base += (
+                f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+            )
         if video_config.spicy_mode.enabled_modifiers:
             base += f"\n**SPICY MODIFIERS:**\n- {'\n- '.join(video_config.spicy_mode.enabled_modifiers)}\n"
 
@@ -158,16 +161,21 @@ def build_video_prompt(
     if video_config and video_config.spicy_mode.enabled:
         prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
         if video_config.narrative_core:
-            prompt += f"\n\n**INVIOLABLE RULES:**\n"
-            prompt += f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
-            prompt += f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+            prompt += "\n\n**INVIOLABLE RULES:**\n"
+            prompt += (
+                f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
+            )
+            prompt += (
+                f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+            )
         if video_config.spicy_mode.enabled_modifiers:
             prompt += f"\n**SPICY MODIFIERS:**\n- {'\n- '.join(video_config.spicy_mode.enabled_modifiers)}\n"
     return prompt
 
 
-
-def keyframe_vision_prompt(scene: Scene, video_config: VideoConfig | None = None) -> str:
+def keyframe_vision_prompt(
+    scene: Scene, video_config: VideoConfig | None = None
+) -> str:
     prompt = (
         "Image 1 is a scene. Images 2+ are character references. "
         "Score how well characters in the scene match their refs. "
@@ -176,10 +184,13 @@ def keyframe_vision_prompt(scene: Scene, video_config: VideoConfig | None = None
     )
     if video_config and video_config.spicy_mode.enabled and video_config.narrative_core:
         prompt += "\n\n**Critically, ensure the following rules are being followed:**\n"
-        prompt += f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
-        prompt += f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+        prompt += (
+            f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
+        )
+        prompt += (
+            f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+        )
     return prompt
-
 
 
 def video_vision_prompt(scene: Scene, video_config: VideoConfig | None = None) -> str:
@@ -190,10 +201,13 @@ def video_vision_prompt(scene: Scene, video_config: VideoConfig | None = None) -
     )
     if video_config and video_config.spicy_mode.enabled and video_config.narrative_core:
         prompt += "\n\n**Critically, ensure the following rules are being followed in the video:**\n"
-        prompt += f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
-        prompt += f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+        prompt += (
+            f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
+        )
+        prompt += (
+            f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+        )
     return prompt
-
 
 
 # ─── Fix / retry prompts ───────────────────────────────────
@@ -239,12 +253,15 @@ def ideation_user_message(
     if video_config and video_config.spicy_mode.enabled:
         msg = f"{video_config.spicy_mode.global_prefix}{msg}"
         if video_config.narrative_core:
-            msg += f"\n\n**INVIOLABLE RULES:**\n"
-            msg += f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
-            msg += f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+            msg += "\n\n**INVIOLABLE RULES:**\n"
+            msg += (
+                f"- **Restraint Rule**: {video_config.narrative_core.restraint_rule}\n"
+            )
+            msg += (
+                f"- **Escalation Arc**: {video_config.narrative_core.escalation_arc}\n"
+            )
         if video_config.spicy_mode.enabled_modifiers:
             msg += f"\n**SPICY MODIFIERS:**\n- {'\n- '.join(video_config.spicy_mode.enabled_modifiers)}\n"
-
 
     if ref_descriptions:
         desc_block = "\n".join(

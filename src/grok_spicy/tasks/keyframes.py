@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from prefect import task
 
 from grok_spicy.client import (
     MODEL_IMAGE,
     MODEL_REASONING,
+    MODEL_VIDEO,
     download,
     generate_with_moderation_retry,
     get_client,
@@ -106,8 +108,6 @@ def compose_keyframe(
         video_config=video_config,
     )
 
-
-
     logger.info("Compose prompt: %s", compose_prompt)
 
     # Video prompt for Step 5 — tier-aware construction
@@ -121,7 +121,6 @@ def compose_keyframe(
         video_config=video_config,
     )
 
-
     video_prompt = append_negative_prompt(video_prompt, config.negative_prompt)
     tier = (
         "standard (correction eligible)"
@@ -130,9 +129,54 @@ def compose_keyframe(
     )
     logger.info("Video prompt [%s]: %s", tier, video_prompt)
 
+    # ── DRY-RUN: write prompts, return mock ──
+    if config.dry_run:
+        from grok_spicy.dry_run import write_prompt
+
+        ref_labels = [f"{c.name} portrait ({c.portrait_url})" for c in scene_chars[:2]]
+        if prev_last_frame_url:
+            ref_labels.append(f"prev_frame ({prev_last_frame_url})")
+        write_prompt(
+            "step3_keyframes",
+            f"scene_{scene.scene_id}_compose",
+            model=MODEL_IMAGE,
+            prompt=compose_prompt,
+            image_refs=ref_labels,
+            api_params={"aspect_ratio": plan.aspect_ratio},
+        )
+        write_prompt(
+            "step3_keyframes",
+            f"scene_{scene.scene_id}_video_prompt",
+            model=MODEL_VIDEO,
+            prompt=video_prompt,
+            api_params={
+                "duration": scene.duration_seconds,
+                "tier": tier,
+            },
+        )
+        v_prompt = keyframe_vision_prompt(scene, video_config)
+        write_prompt(
+            "step3_keyframes",
+            f"scene_{scene.scene_id}_vision_check",
+            model=MODEL_REASONING,
+            prompt=v_prompt,
+            image_refs=[f"{c.name} portrait" for c in scene_chars[:2]],
+        )
+        logger.info("Dry-run: wrote keyframe prompts for scene %d", scene.scene_id)
+        return KeyframeAsset(
+            scene_id=scene.scene_id,
+            keyframe_url="dry-run://placeholder",
+            keyframe_path=f"output/keyframes/scene_{scene.scene_id}_dry_run.jpg",
+            consistency_score=1.0,
+            generation_attempts=0,
+            edit_passes=0,
+            video_prompt=video_prompt,
+        )
+
     best: dict = {"score": 0.0, "url": "", "path": ""}
     fix_text = None
     iteration = 0
+    score: ConsistencyScore | None = None
 
     for iteration in range(1, max_iters + 1):
         if iteration == 1:
@@ -145,7 +189,7 @@ def compose_keyframe(
                 MODEL_IMAGE,
             )
             current_prompt = compose_prompt
-            sample_kw = dict(
+            sample_kw: dict[str, Any] = dict(
                 model=MODEL_IMAGE,
                 image_urls=ref_urls,
                 aspect_ratio=plan.aspect_ratio,
@@ -153,7 +197,7 @@ def compose_keyframe(
         else:
             # 3c: Targeted single-image edit
             current_prompt = fix_prompt_from_issues(
-                score.issues, fix_text  # noqa: F821 — score set in prior iteration
+                score.issues if score else [], fix_text
             )
             logger.info(
                 "Scene %d iteration %d/%d: fix edit prompt: %s",

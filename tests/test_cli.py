@@ -83,7 +83,7 @@ def test_prompt_file_missing_exits(monkeypatch):
     )
     try:
         main()
-        assert False, "Should have called sys.exit"
+        raise AssertionError("Should have called sys.exit")
     except SystemExit as exc:
         assert exc.code == 1
 
@@ -96,7 +96,7 @@ def test_prompt_file_empty_exits(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["grok-spicy", "--prompt-file", str(pf)])
     try:
         main()
-        assert False, "Should have called sys.exit"
+        raise AssertionError("Should have called sys.exit")
     except SystemExit as exc:
         assert exc.code == 1
 

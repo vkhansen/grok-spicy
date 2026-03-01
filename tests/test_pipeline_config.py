@@ -14,6 +14,7 @@ def test_defaults():
     assert cfg.max_retries is None
     assert cfg.max_duration == 15
     assert cfg.debug is False
+    assert cfg.dry_run is False
 
 
 def test_effective_style_default():
@@ -81,6 +82,11 @@ def test_max_retries_bounds():
         PipelineConfig(max_retries=0)
 
 
+def test_dry_run_flag():
+    cfg = PipelineConfig(dry_run=True)
+    assert cfg.dry_run is True
+
+
 def test_round_trip():
     cfg = PipelineConfig(
         negative_prompt="No zoom",
@@ -89,6 +95,7 @@ def test_round_trip():
         max_retries=5,
         max_duration=8,
         debug=True,
+        dry_run=True,
     )
     json_str = cfg.model_dump_json()
     restored = PipelineConfig.model_validate_json(json_str)
@@ -98,3 +105,4 @@ def test_round_trip():
     assert restored.max_retries == 5
     assert restored.max_duration == 8
     assert restored.debug is True
+    assert restored.dry_run is True

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from prefect import task
 
@@ -77,6 +78,53 @@ def generate_scene_video(
     )
     logger.info("Video prompt: %s", keyframe.video_prompt)
 
+    # ── DRY-RUN: write prompts, return mock ──
+    if config.dry_run:
+        from grok_spicy.dry_run import write_prompt
+
+        write_prompt(
+            "step5_videos",
+            f"scene_{scene.scene_id}_generate",
+            model=MODEL_VIDEO,
+            prompt=keyframe.video_prompt,
+            image_refs=[f"keyframe ({keyframe.keyframe_url})"],
+            api_params={
+                "duration": scene.duration_seconds,
+                "resolution": RESOLUTION,
+                "aspect_ratio": "16:9",
+                "tier": tier,
+            },
+        )
+        v_prompt = video_vision_prompt(scene, video_config)
+        scene_chars = [char_map[n] for n in scene.characters_present if n in char_map]
+        write_prompt(
+            "step5_videos",
+            f"scene_{scene.scene_id}_vision_check",
+            model=MODEL_REASONING,
+            prompt=v_prompt,
+            image_refs=[f"{c.name} portrait" for c in scene_chars[:2]],
+        )
+        if correction_eligible:
+            write_prompt(
+                "step5_videos",
+                f"scene_{scene.scene_id}_correction_template",
+                model=MODEL_VIDEO,
+                prompt="[DRY-RUN] Correction prompt would be generated from "
+                "vision check issues (video_fix_prompt)",
+                api_params={"video_url": "current_video_url"},
+            )
+        logger.info("Dry-run: wrote video prompts for scene %d", scene.scene_id)
+        return VideoAsset(
+            scene_id=scene.scene_id,
+            video_url="dry-run://placeholder",
+            video_path=f"output/videos/scene_{scene.scene_id}_dry_run.mp4",
+            duration=float(scene.duration_seconds),
+            first_frame_path=f"output/frames/scene_{scene.scene_id}_first_dry_run.jpg",
+            last_frame_path=f"output/frames/scene_{scene.scene_id}_last_dry_run.jpg",
+            consistency_score=1.0,
+            correction_passes=0,
+        )
+
     client = get_client()
     corrections = 0
 
@@ -87,8 +135,7 @@ def generate_scene_video(
     )
     vid_prompt = keyframe.video_prompt
 
-
-    vid_kw = dict(
+    vid_kw: dict[str, Any] = dict(
         model=MODEL_VIDEO,
         image_url=keyframe.keyframe_url,
         duration=scene.duration_seconds,

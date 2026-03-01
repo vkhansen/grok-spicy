@@ -172,6 +172,11 @@ def main():
         help="Enable spicy mode using video.json configuration",
     )
     parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview all prompts without making API calls (no key needed)",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Debug mode: only generate 1 scene (faster, cheaper test runs)",
@@ -217,6 +222,7 @@ def main():
     config_kw: dict = {
         "max_duration": args.max_duration,
         "debug": args.debug,
+        "dry_run": args.dry_run,
     }
     if args.negative_prompt is not None:
         config_kw["negative_prompt"] = args.negative_prompt
@@ -333,23 +339,26 @@ def main():
         len(args.ref),
     )
 
-    # Environment validation
-    api_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
-    if not api_key:
-        print(
-            "Error: No API key found.\n"
-            "Set GROK_API_KEY in .env or as an environment variable.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # Environment validation (skip in dry-run mode)
+    if config.dry_run:
+        print("=== DRY-RUN MODE: writing prompts to output/dry_run/ ===")
+    else:
+        api_key = os.environ.get("GROK_API_KEY") or os.environ.get("XAI_API_KEY")
+        if not api_key:
+            print(
+                "Error: No API key found.\n"
+                "Set GROK_API_KEY in .env or as an environment variable.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    if not shutil.which("ffmpeg"):
-        print(
-            "Warning: FFmpeg not found on PATH. "
-            "Steps 5-6 (video generation/assembly) will fail.\n"
-            "Install it: https://ffmpeg.org/download.html",
-            file=sys.stderr,
-        )
+        if not shutil.which("ffmpeg"):
+            print(
+                "Warning: FFmpeg not found on PATH. "
+                "Steps 5-6 (video generation/assembly) will fail.\n"
+                "Install it: https://ffmpeg.org/download.html",
+                file=sys.stderr,
+            )
 
     # Parse reference images
     character_refs = _parse_refs(args.ref) if args.ref else None
@@ -392,7 +401,7 @@ def main():
         print()
         print("=" * 60)
         print(f"  DASHBOARD: http://localhost:{args.port}")
-        print(f"  (ignore the Prefect server URL above — that is internal)")
+        print("  (ignore the Prefect server URL above — that is internal)")
         print("=" * 60)
         print()
 
@@ -416,7 +425,7 @@ def main():
         print("=" * 60)
         print(f"  All {total} run(s) complete.")
         print(f"  DASHBOARD: http://localhost:{args.port}")
-        print(f"  Press Ctrl+C to stop the server.")
+        print("  Press Ctrl+C to stop the server.")
         print("=" * 60)
         server_thread.join()
     else:

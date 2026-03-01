@@ -17,13 +17,14 @@ An automated video production pipeline that turns a short text concept into a mu
 
 ## Architecture
 
-Six-step pipeline, each step a Prefect task, with an observer pattern for live updates:
+Seven-step pipeline (six core + one pre-ideation), each step a Prefect task, with an observer pattern for live updates:
 
-1. **Ideation** — `grok-4-1-fast-non-reasoning` + `chat.parse(StoryPlan)` → structured story plan
+0. **Reference Description** (optional) — `grok-4-1-fast-reasoning` vision extracts visual descriptions from uploaded reference photos → `CharacterDescription`
+1. **Ideation** — `grok-4-1-fast-non-reasoning` + `chat.parse(StoryPlan)` → structured story plan (uses `SPICY_SYSTEM_PROMPT` when spicy mode is active)
 2. **Character Sheets** — `grok-imagine-image` text→image OR stylize from reference photo + `grok-4-1-fast-reasoning` vision verify loop
 3. **Keyframe Composition** — `grok-imagine-image` multi-image edit (max 3 refs) + vision consistency
 4. **Script Compilation** — pure Python, generates `script.md` + `state.json`
-5. **Video Generation** — `grok-imagine-video` image→video + drift correction via video edit
+5. **Video Generation** — `grok-imagine-video` image→video + drift correction via video edit (tier-aware: ≤8s correction-eligible, 9-15s extended)
 6. **Assembly** — FFmpeg normalize + concatenate → `final_video.mp4`
 
 ### Observer Pattern
@@ -58,6 +59,11 @@ Users can provide photos of real people or character art before a run:
 - Video/image URLs are **temporary** — download immediately after generation
 - Structured output (`chat.parse()`) requires **Grok 4 family** models only
 - OpenAI SDK `images.edit()` does NOT work — must use xAI SDK or direct HTTP with JSON body
+- **Scene duration tiers**: 3-8s = correction-eligible (drift fix loop), 9-15s = extended (no corrections, only extended-retry if score < 0.50)
+- **Scene count**: 3-6 total (ideally 4-5), each 6-10s with one primary action
+- **Characters per scene**: 1-3 (max 4) to avoid visual clutter
+- **Moderation auto-reword**: max 2 attempts to rewrite blocked prompts while preserving scene/character/camera/style
+- **Extended retry threshold**: 0.50 — extended-tier scenes below this score are regenerated from scratch
 
 ## Project Structure
 
@@ -65,12 +71,19 @@ Users can provide photos of real people or character art before a run:
 grok-spicy/
 ├── CLAUDE.md
 ├── pyproject.toml
+├── video.json                   # Spicy mode config (default, edit this)
+├── examples/                    # Example video.json configs (low/medium/high/extreme/solo/scene-only)
 ├── src/
 │   └── grok_spicy/
 │       ├── __init__.py
-│       ├── __main__.py          # CLI entry point (--serve, --web, --ref)
-│       ├── schemas.py           # Pydantic models (StoryPlan, CharacterRefMapping, etc.)
+│       ├── __main__.py          # CLI entry point (--serve, --web, --ref, --spicy, --config, --dry-run)
+│       ├── schemas.py           # Pydantic models (StoryPlan, VideoConfig, SpicyMode, etc.)
 │       ├── client.py            # xAI SDK wrapper + helpers
+│       ├── config.py            # video.json loader with caching + graceful fallback
+│       ├── dry_run.py            # Dry-run helpers (write prompts to markdown files)
+│       ├── prompts.py           # Pure prompt builder functions (all pipeline prompts)
+│       ├── prompt_builder.py    # Spicy prompt composer (0/1/2+ character logic)
+│       ├── pipeline.py          # Prefect flow wiring + observer hooks
 │       ├── db.py                # SQLite schema + CRUD functions
 │       ├── events.py            # Thread-safe EventBus (sync→async bridge)
 │       ├── observer.py          # PipelineObserver protocol + NullObserver + WebObserver
@@ -80,17 +93,17 @@ grok-spicy/
 │       │   ├── index.html       # Run list
 │       │   ├── new_run.html     # New run form + image upload
 │       │   └── run.html         # Live-updating run detail (SSE)
-│       ├── tasks/
-│       │   ├── __init__.py
-│       │   ├── ideation.py      # Step 1: plan_story
-│       │   ├── characters.py    # Step 2: generate_character_sheet (+ stylize mode)
-│       │   ├── keyframes.py     # Step 3: compose_keyframe
-│       │   ├── script.py        # Step 4: compile_script
-│       │   ├── video.py         # Step 5: generate_scene_video
-│       │   └── assembly.py      # Step 6: assemble_final_video
-│       └── pipeline.py          # Prefect flow wiring + observer hooks
+│       └── tasks/
+│           ├── __init__.py
+│           ├── describe_ref.py  # Step 0: extract visual description from reference photos
+│           ├── ideation.py      # Step 1: plan_story (+ SPICY_SYSTEM_PROMPT)
+│           ├── characters.py    # Step 2: generate_character_sheet (+ stylize mode)
+│           ├── keyframes.py     # Step 3: compose_keyframe
+│           ├── script.py        # Step 4: compile_script
+│           ├── video.py         # Step 5: generate_scene_video (tier-aware)
+│           └── assembly.py      # Step 6: assemble_final_video
 ├── docs/
-│   └── features/                # Feature cards (numbered)
+│   └── features/                # Feature cards (01-14, numbered)
 ├── output/                      # Generated assets (gitignored)
 └── tests/
 ```
@@ -105,11 +118,48 @@ grok-spicy/
 - Vision-in-the-loop: every generation is checked against character reference sheets
 - Observer calls are fire-and-forget — wrapped in try/except, never crash the pipeline
 - Web dependencies (FastAPI, uvicorn, Jinja2) are optional — only imported when `--serve` or `--web` is used
+- All prompt construction lives in `prompts.py` as pure functions — one per prompt type
+- Spicy mode is entirely config-driven via `video.json` — no code changes needed for new characters/traits
+- Reference descriptions from photos override LLM-generated `visual_description` (injected verbatim)
+- Character `spicy_traits` from `VideoConfig` are merged into plan characters by name match after ideation
+
+## Spicy Mode
+
+Config-driven adult content pipeline controlled via `video.json` (no code changes needed):
+
+- **Activation**: `--spicy` CLI flag loads `video.json` (or `--config path.json`)
+- **Config schema**: `VideoConfig` → `SpicyMode` + `SpicyCharacter[]` + `DefaultVideo`
+- **Intensity levels**: `low` (1 modifier), `medium` (2), `high` (all), `extreme` (all + emphasis)
+- **Integration points**: ideation system prompt swaps to `SPICY_SYSTEM_PROMPT`, prompts get `global_prefix` + `enabled_modifiers`, characters get `spicy_traits` merged by name match
+- **Prompt builder** (`prompt_builder.py`): adapts output based on character count (0 = scene-only, 1 = solo focus, 2+ = interaction)
+- **Graceful fallback**: missing/invalid `video.json` logs warning and uses empty defaults (no crash)
+- **Example configs** in `examples/` directory (7 presets from low to extreme)
+
+## Dry-Run Mode
+
+Preview all prompts without making API calls or spending money:
+
+- **Activation**: `--dry-run` CLI flag (no API key or FFmpeg required)
+- **Behavior**: all prompt construction runs normally, but API calls are replaced with mock returns; every prompt is written to a structured markdown file under `output/dry_run/`
+- **Output structure**: `output/dry_run/{step}/{label}.md` + `output/dry_run/summary.md`
+- **Mock data**: flows downstream so all steps execute — `StoryPlan` gets 2 characters + 3 scenes with `[DRY-RUN]` prefixed fields, assets get `dry-run://placeholder` URLs and score=1.0
+- **Steps skipped**: Step 6 (assembly) is skipped entirely; Step 4 (script) runs unchanged with placeholder paths
+- **LLM ref matching**: skips the LLM fallback phase (exact matches still work)
+- **Config field**: `PipelineConfig.dry_run: bool = False`
+
+## LLM Models
+
+| Model | Constant | Purpose |
+|---|---|---|
+| `grok-4-1-fast-non-reasoning` | `MODEL_STRUCTURED` | Structured output (StoryPlan, CharacterRefMapping) |
+| `grok-4-1-fast-reasoning` | `MODEL_REASONING` | Vision checks, reference photo description |
+| `grok-imagine-image` | `MODEL_IMAGE` | Image generation + editing + stylization |
+| `grok-imagine-video` | `MODEL_VIDEO` | Video generation + drift correction |
 
 ## Environment
 
-- `GROK_API_KEY` environment variable (or `.env` file) required
-- FFmpeg must be installed and on PATH
+- `GROK_API_KEY` or `XAI_API_KEY` environment variable (or `.env` file) required (not needed for `--dry-run`)
+- FFmpeg must be installed and on PATH (not needed for `--dry-run`)
 - Prefect server optional (works with local ephemeral server)
 
 ## Running
@@ -129,6 +179,23 @@ python -m grok_spicy "A fox and owl adventure" --serve
 
 # Run pipeline with character reference images
 python -m grok_spicy "A spy thriller" --ref "Alex=photos/alex.jpg" --ref "Maya=photos/maya.jpg"
+
+# Run pipeline with spicy mode
+python -m grok_spicy "A romantic encounter" --spicy
+python -m grok_spicy "A romantic encounter" --spicy --config examples/video-extreme.json
+
+# Dry run — preview all prompts without API calls (no key needed)
+python -m grok_spicy "A fox and owl adventure" --dry-run
+python -m grok_spicy "A romance" --dry-run --spicy --ref "Alex=photo.jpg"
+
+# Run from a prompt file (one or more concepts)
+python -m grok_spicy --prompt-file my_prompts.txt
+
+# Pre-built StoryPlan JSON (skips ideation)
+python -m grok_spicy --script output/state.json
+
+# Tune generation
+python -m grok_spicy "concept" --max-duration 8 --consistency-threshold 0.85 --negative-prompt "blurry"
 
 # Dashboard only (browse past runs, launch new ones from web)
 python -m grok_spicy --web

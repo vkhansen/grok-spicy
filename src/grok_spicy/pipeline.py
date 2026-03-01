@@ -78,6 +78,7 @@ def _notify(observer: PipelineObserver, method: str, *args: object) -> None:
 def _match_character_refs(
     character_refs: dict[str, str],
     characters: list[Character],
+    dry_run: bool = False,
 ) -> dict[str, str]:
     """Map uploaded reference names to generated character names.
 
@@ -119,6 +120,10 @@ def _match_character_refs(
     unmatched_char_names = char_names - set(matched.keys())
     if not unmatched_char_names:
         logger.debug("All character names already matched, skipping LLM fallback")
+        return matched
+
+    if dry_run:
+        logger.info("Dry-run: skipping LLM fallback for ref matching")
         return matched
 
     logger.info(
@@ -208,34 +213,34 @@ def video_pipeline(
         from grok_spicy.config import resolve_character_images
 
         resolved_images = resolve_character_images(video_config)
-        for char in video_config.characters:
-            imgs = resolved_images.get(char.id, [])
-            if imgs and char.name not in character_refs:
+        for cfg_char in video_config.characters:
+            imgs = resolved_images.get(cfg_char.id, [])
+            if imgs and cfg_char.name not in character_refs:
                 # Use the first image as the reference for this character
                 first_img = imgs[0]
                 if not first_img.startswith(("http://", "https://")):
-                    character_refs[char.name] = first_img
+                    character_refs[cfg_char.name] = first_img
                     logger.info(
                         "Spicy config: added local ref image for %r: %s",
-                        char.name,
+                        cfg_char.name,
                         first_img,
                     )
-                else:
-                    # Download URL to local cache
-                    safe = char.name.replace(" ", "_")
+                elif not config.dry_run:
+                    # Download URL to local cache (skip in dry-run)
+                    safe = cfg_char.name.replace(" ", "_")
                     dest = f"output/references/{safe}_config.jpg"
                     try:
                         download(first_img, dest)
-                        character_refs[char.name] = dest
+                        character_refs[cfg_char.name] = dest
                         logger.info(
                             "Spicy config: downloaded ref image for %r: %s",
-                            char.name,
+                            cfg_char.name,
                             dest,
                         )
                     except Exception:
                         logger.warning(
                             "Failed to download config image for %r: %s",
-                            char.name,
+                            cfg_char.name,
                             first_img,
                             exc_info=True,
                         )
@@ -265,7 +270,7 @@ def video_pipeline(
                 )
                 print("=== Pre-ideation: Analyzing reference images ===")
                 desc_futures = [
-                    describe_reference_image.submit(name, path)
+                    describe_reference_image.submit(name, path, config=config)
                     for name, path in character_refs.items()
                 ]
                 ref_descriptions = {}
@@ -292,7 +297,9 @@ def video_pipeline(
                 ideation_concept = f"{concept}\n\nSpicy mode context: {spicy_prompt}"
                 logger.info("Augmented concept with spicy prompt for ideation")
 
-            plan = plan_story(ideation_concept, ref_descriptions=ref_descriptions)
+            plan = plan_story(
+                ideation_concept, ref_descriptions=ref_descriptions, config=config
+            )
             logger.info(
                 "STEP 1 complete: title=%r, characters=%d, scenes=%d, "
                 "style=%r, aspect=%s",
@@ -324,7 +331,9 @@ def video_pipeline(
             _notify(observer, "on_plan", run_id, plan)
 
             # Match uploaded reference names to generated character names
-            matched_refs = _match_character_refs(character_refs, plan.characters)
+            matched_refs = _match_character_refs(
+                character_refs, plan.characters, dry_run=config.dry_run
+            )
             if matched_refs:
                 print(f"  Ref images matched: {list(matched_refs.keys())}")
 
@@ -402,20 +411,20 @@ def video_pipeline(
             for c in plan.characters
         ]
         characters = [f.result() for f in char_futures]
-        char_map = {c.name: c for c in characters}
-        for c in characters:
+        char_map = {ca.name: ca for ca in characters}
+        for ca in characters:
             logger.info(
                 "STEP 2 result: %s — score=%.2f, attempts=%d, path=%s",
-                c.name,
-                c.consistency_score,
-                c.generation_attempts,
-                c.portrait_path,
+                ca.name,
+                ca.consistency_score,
+                ca.generation_attempts,
+                ca.portrait_path,
             )
             print(
-                f"  {c.name}: score={c.consistency_score:.2f}, "
-                f"attempts={c.generation_attempts}"
+                f"  {ca.name}: score={ca.consistency_score:.2f}, "
+                f"attempts={ca.generation_attempts}"
             )
-            _notify(observer, "on_character", run_id, c)
+            _notify(observer, "on_character", run_id, ca)
 
         # ═══ STEP 3: KEYFRAMES (sequential for frame chaining) ═══
         logger.info("STEP 3: Keyframes — generating %d", len(plan.scenes))
@@ -509,23 +518,46 @@ def video_pipeline(
             _notify(observer, "on_video", run_id, v)
 
         # ═══ STEP 6: ASSEMBLY ═══
-        logger.info("STEP 6: Assembly — %d clips", len(videos))
-        print("=== STEP 6: Assembly ===")
-        final = assemble_final_video(videos)
-        logger.info("STEP 6 complete: final_video=%s", final)
-        print(f"-> {final}")
+        if config.dry_run:
+            logger.info("STEP 6: Skipped (dry-run)")
+            print("=== STEP 6: Assembly (skipped — dry-run) ===")
 
-        # Save final state
-        state.videos = videos
-        state.final_video_path = final
-        _save_state(state)
+            # Collect all prompt files and write summary
+            import glob as globmod
 
-        _notify(observer, "on_complete", run_id, final)
+            from grok_spicy.dry_run import DRY_RUN_DIR, write_summary
 
-        logger.info(
-            "Pipeline finished successfully — run_id=%d, output=%s", run_id, final
-        )
-        return final
+            prompt_files = sorted(
+                globmod.glob(os.path.join(DRY_RUN_DIR, "**", "*.md"), recursive=True)
+            )
+            summary_path = write_summary(prompt_files)
+            logger.info("Dry-run summary written to %s", summary_path)
+            print(f"-> Summary: {summary_path}")
+
+            # Save state (with placeholder paths)
+            state.videos = videos
+            _save_state(state)
+
+            _notify(observer, "on_complete", run_id, summary_path)
+            return summary_path
+        else:
+            logger.info("STEP 6: Assembly — %d clips", len(videos))
+            print("=== STEP 6: Assembly ===")
+            final = assemble_final_video(videos)
+            logger.info("STEP 6 complete: final_video=%s", final)
+            print(f"-> {final}")
+
+            # Save final state
+            state.videos = videos
+            state.final_video_path = final
+            _save_state(state)
+
+            _notify(observer, "on_complete", run_id, final)
+
+            logger.info(
+                "Pipeline finished successfully — run_id=%d, output=%s", run_id, final
+            )
+            return final
 
     except Exception as exc:
         logger.error(

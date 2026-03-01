@@ -15,7 +15,7 @@ from grok_spicy.db import (
     update_run,
 )
 from grok_spicy.events import Event, EventBus
-from grok_spicy.web import app, event_bus, get_db, set_db
+from grok_spicy.web import app, get_db, set_db
 
 
 @pytest.fixture(autouse=True)

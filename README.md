@@ -8,8 +8,8 @@ An automated video production pipeline that turns a short text concept into a mu
 ## Prerequisites
 
 - **Python 3.12+**
-- **FFmpeg** installed and on PATH ([download](https://ffmpeg.org/download.html))
-- **Grok API key** from [xAI](https://x.ai/)
+- **FFmpeg** installed and on PATH ([download](https://ffmpeg.org/download.html)) — not needed for `--dry-run`
+- **Grok API key** from [xAI](https://x.ai/) — not needed for `--dry-run`
 
 ## Quick Start
 
@@ -38,18 +38,19 @@ The pipeline takes ~5-6 minutes and costs ~$3.80 per run (2 characters, 3 scenes
 
 ## Pipeline Flow
 
-The pipeline is a six-step process orchestrated as a Prefect flow (`src/grok_spicy/pipeline.py`). Each step is a Prefect task with automatic retries, caching, and observability.
+The pipeline is a seven-step process (six core + one optional pre-ideation) orchestrated as a Prefect flow (`src/grok_spicy/pipeline.py`). Each step is a Prefect task with automatic retries, caching, and observability.
 
 ```mermaid
 flowchart TD
     A["User Concept<br/><i>'A curious fox meets a wise owl...'</i>"] --> B
-    R["Reference Images<br/><i>(optional photos/faces)</i>"] -.-> B
+    R["Reference Images<br/><i>(optional photos/faces)</i>"] -.-> R0
+    R0["<b>Step 0: Describe References</b> ⚡ parallel<br/>grok-4-1-fast-reasoning vision<br/>Extract visual descriptions"] -.-> B
 
     B["<b>Step 1: Ideation</b><br/>grok-4-1-fast-non-reasoning<br/>chat.parse(StoryPlan)"]
     B --> C["<b>Step 2: Character Sheets</b> ⚡ parallel<br/>grok-imagine-image + vision verify<br/>Generate or stylize from reference"]
     C --> D["<b>Step 3: Keyframes</b> 🔗 sequential<br/>Multi-image edit (max 3 refs)<br/>+ vision consistency loop"]
     D --> E["<b>Step 4: Script Compilation</b><br/>Pure Python → script.md + state.json"]
-    E --> F["<b>Step 5: Video Generation</b> 🔗 sequential<br/>grok-imagine-video + drift correction<br/>Motion-only prompts"]
+    E --> F["<b>Step 5: Video Generation</b> 🔗 sequential<br/>grok-imagine-video + drift correction<br/>Tier-aware: ≤8s correctable, 9-15s extended"]
     F --> G["<b>Step 6: Assembly</b><br/>FFmpeg normalize + concat<br/>→ final_video.mp4"]
 
     O["Observer<br/>(optional)"] -.->|on_plan| B
@@ -60,6 +61,7 @@ flowchart TD
 
     style A fill:#2d2d2d,stroke:#4f9,color:#e0e0e0
     style R fill:#2d2d2d,stroke:#ff9,color:#e0e0e0,stroke-dasharray: 5 5
+    style R0 fill:#2d2d2d,stroke:#ff9,color:#e0e0e0,stroke-dasharray: 5 5
     style O fill:#2d2d2d,stroke:#ff9,color:#e0e0e0,stroke-dasharray: 5 5
 ```
 
@@ -67,21 +69,25 @@ flowchart TD
 
 | Step | Task | Model(s) | Execution | Key Behavior |
 |---|---|---|---|---|
-| 1 | `plan_story` | `grok-4-1-fast-non-reasoning` | Single call | Structured output → `StoryPlan` with frozen 80+ word character descriptions |
-| 2 | `generate_character_sheet` | `grok-imagine-image` + `grok-4-1-fast-reasoning` | **Parallel** | Generate/stylize → vision verify → retry if < 0.80 (max 3x) |
+| 0 | `describe_reference_image` | `grok-4-1-fast-reasoning` | **Parallel** | Vision-extract visual description from reference photos (optional, only when `--ref` provided) |
+| 1 | `plan_story` | `grok-4-1-fast-non-reasoning` | Single call | Structured output → `StoryPlan` with frozen 80+ word character descriptions; swaps to `SPICY_SYSTEM_PROMPT` when spicy mode active |
+| 2 | `generate_character_sheet` | `grok-imagine-image` + `grok-4-1-fast-reasoning` | **Parallel** | Generate/stylize → vision verify → retry if < 0.80 (max 3x); checks `spicy_traits` if present |
 | 3 | `compose_keyframe` | `grok-imagine-image` + `grok-4-1-fast-reasoning` | Sequential | Multi-image edit with char refs → vision check → fix loop (max 3x) |
 | 4 | `compile_script` | None | Single call | Pure Python: `script.md` + `state.json` |
-| 5 | `generate_scene_video` | `grok-imagine-video` + `grok-4-1-fast-reasoning` | Sequential | Image→video → frame extract → drift check → correction (max 2x) |
+| 5 | `generate_scene_video` | `grok-imagine-video` + `grok-4-1-fast-reasoning` | Sequential | Tier-aware: ≤8s correction-eligible (max 2x drift fix), 9-15s extended (retry if score < 0.50) |
 | 6 | `assemble_final_video` | FFmpeg | Single call | Normalize 24fps/720p → concatenate |
 
 ### Key Design Decisions
 
-- **Frozen descriptions** — The `visual_description` from Step 1 is never paraphrased. The exact same string is used in every image prompt.
+- **Frozen descriptions** — The `visual_description` from Step 1 is never paraphrased. The exact same string is used in every image prompt. Reference photo descriptions override LLM-generated ones.
 - **Multi-image anchoring** — Character sheets are always passed as `image_urls[]` references, never relying on text alone.
 - **Last-frame chaining** — Each scene's keyframe references the previous scene's output for visual continuity.
 - **Motion-only video prompts** — Step 5 prompts describe camera and action, not appearance. The keyframe carries appearance truth.
-- **Vision-in-the-loop** — Every generated asset is checked by Grok Vision against reference sheets, with surgical fix prompts on failure.
+- **Tier-aware video generation** — Scenes ≤8s get drift correction loops (max 2); scenes 9-15s are extended-tier with no corrections (only regeneration if score < 0.50).
+- **Vision-in-the-loop** — Every generated asset is checked by Grok Vision against reference sheets, with surgical fix prompts on failure. `spicy_traits` are included in vision checks when present.
 - **Observer pattern** — Pipeline emits events at each step boundary. A `NullObserver` (default) is a no-op; a `WebObserver` writes to SQLite and pushes SSE events for the live dashboard.
+- **Moderation resilience** — Blocked prompts are automatically reworded (max 2 attempts) while preserving scene/character/camera/style intent.
+- **Pure prompt functions** — All prompt construction lives in `prompts.py` as composable pure functions, one per prompt type.
 
 ## Web Dashboard
 
@@ -359,6 +365,53 @@ python -m grok_spicy "A summer romance" --spicy --config examples/video-with-ima
 
 The config is validated on load using Pydantic. If anything is wrong, you'll get a clear error message in the logs and the pipeline falls back to defaults.
 
+## Dry-Run Mode
+
+Preview every prompt the pipeline would send — without making API calls, spending money, or needing an API key.
+
+```bash
+# Basic dry run
+python -m grok_spicy "A fox and owl adventure" --dry-run
+
+# Dry run with spicy mode and reference images
+python -m grok_spicy "A romance" --dry-run --spicy --ref "Alex=photo.jpg"
+
+# Inspect the output
+cat output/dry_run/summary.md
+cat output/dry_run/step1_ideation/story_plan.md
+```
+
+**How it works:**
+- All prompt construction code runs normally — no duplication
+- API calls are replaced with mock returns (placeholder URLs, score=1.0)
+- Mock data flows downstream so ALL steps execute and produce prompts
+- Each prompt is written as a structured markdown file to `output/dry_run/{step}/{label}.md`
+- A `summary.md` lists all generated prompt files
+- Step 6 (assembly) is skipped entirely; Step 4 (script) runs unchanged
+
+**Output structure:**
+```
+output/dry_run/
+  step0_describe_ref/        # Only when --ref is used
+    Alex.md
+  step1_ideation/
+    story_plan.md
+  step2_characters/
+    Alice_generate.md
+    Alice_vision_check.md
+  step3_keyframes/
+    scene_1_compose.md
+    scene_1_video_prompt.md
+    scene_1_vision_check.md
+  step5_videos/
+    scene_1_generate.md
+    scene_1_vision_check.md
+    scene_1_correction_template.md
+  summary.md
+```
+
+Each `.md` file contains: model name, full prompt text, image references, and API parameters.
+
 ## CLI Reference
 
 ```
@@ -382,6 +435,7 @@ python -m grok_spicy [concept] [options]
 | `--style-override` | string | -- | Replace the LLM-generated plan.style |
 | `--consistency-threshold` | float | `0.80` | Vision-check threshold (0.0-1.0) |
 | `--max-retries` | int | -- | Override all retry/iteration counts |
+| `--dry-run` | flag | `false` | Preview all prompts without API calls (no key/FFmpeg needed) |
 | `--debug` | flag | `false` | Only generate 1 scene (faster test runs) |
 | `-v`, `--verbose` | flag | `false` | Enable DEBUG-level logging on the console |
 
@@ -394,6 +448,7 @@ python -m grok_spicy [concept] [options]
 | `python -m grok_spicy "concept" --spicy --config path.json` | Runs | -- | Uses custom config |
 | `python -m grok_spicy "concept" --serve` | Runs | Background thread | -- |
 | `python -m grok_spicy "concept" --ref "Alex=photo.jpg"` | Runs with refs | -- | -- |
+| `python -m grok_spicy "concept" --dry-run` | Writes prompts | -- | -- |
 | `python -m grok_spicy --web` | -- (launch from dashboard) | Main process | -- |
 
 ## Output Structure
@@ -649,6 +704,7 @@ tests/
 ├── test_pipeline_config.py   # 13 tests — PipelineConfig defaults, overrides, bounds
 ├── test_video_config.py      # 23 tests — VideoConfig schema, loader, caching, prompt builder
 ├── test_prompts.py           # 22 tests — All prompt builder functions
+├── test_script.py            # Script compilation (markdown storyboard generation)
 ├── test_cli.py               # 9 tests — --ref parsing, --prompt-file, error handling
 ├── test_web.py               # 22 tests — HTTP routes, JSON API, uploads, health, static
 └── test_web_live.py          # 5 tests — Real uvicorn server (marked @pytest.mark.live)
@@ -708,11 +764,12 @@ grok-spicy/
 ├── src/
 │   └── grok_spicy/
 │       ├── __init__.py             # Package version
-│       ├── __main__.py             # CLI entry point (--serve, --web, --ref, --spicy)
+│       ├── __main__.py             # CLI entry point (--serve, --web, --ref, --spicy, --dry-run)
 │       ├── schemas.py              # Pydantic models (data contracts + VideoConfig)
 │       ├── config.py               # video.json loader with caching + fallback
 │       ├── prompt_builder.py       # Spicy prompt composer (0/1/2+ character logic)
 │       ├── client.py               # xAI SDK wrapper + helpers
+│       ├── dry_run.py              # Dry-run helpers (write prompts to markdown)
 │       ├── prompts.py              # Pure prompt builder functions (non-spicy)
 │       ├── pipeline.py             # Prefect flow (main orchestration)
 │       ├── db.py                   # SQLite schema + CRUD
@@ -725,11 +782,12 @@ grok-spicy/
 │       │   ├── new_run.html        # New run form + image upload
 │       │   └── run.html            # Live-updating run detail
 │       └── tasks/
-│           ├── ideation.py         # Step 1: concept → StoryPlan
+│           ├── describe_ref.py     # Step 0: extract visual description from reference photos
+│           ├── ideation.py         # Step 1: concept → StoryPlan (+ SPICY_SYSTEM_PROMPT)
 │           ├── characters.py       # Step 2: generate/stylize + verify portraits
 │           ├── keyframes.py        # Step 3: multi-image scene composition
 │           ├── script.py           # Step 4: markdown storyboard
-│           ├── video.py            # Step 5: image → video + corrections
+│           ├── video.py            # Step 5: image → video + corrections (tier-aware)
 │           └── assembly.py         # Step 6: FFmpeg concat
 ├── tests/
 │   ├── README.md               # Testing guide + troubleshooting
@@ -740,6 +798,7 @@ grok-spicy/
 │   ├── test_observer.py        # Observer pattern
 │   ├── test_pipeline_helpers.py # Pipeline utility functions
 │   ├── test_pipeline_config.py # PipelineConfig unit tests
+│   ├── test_dry_run.py         # Dry-run prompt writer
 │   ├── test_video_config.py    # VideoConfig, config loader, prompt builder
 │   ├── test_prompts.py         # Prompt builder functions
 │   ├── test_cli.py             # CLI argument parsing
@@ -753,9 +812,9 @@ grok-spicy/
 | Model | Purpose | Used In |
 |---|---|---|
 | `grok-4-1-fast-non-reasoning` | Structured output (StoryPlan, CharacterRefMapping) | Steps 1, ref matching |
-| `grok-4-1-fast-reasoning` | Vision checks (consistency scoring) | Steps 2, 3, 5 |
+| `grok-4-1-fast-reasoning` | Vision checks (consistency scoring), reference photo description | Steps 0, 2, 3, 5 |
 | `grok-imagine-image` | Image generation + editing + stylization | Steps 2, 3 |
-| `grok-imagine-video` | Video generation + editing | Step 5 |
+| `grok-imagine-video` | Video generation + editing (drift correction) | Step 5 |
 
 ## Cost & Performance
 

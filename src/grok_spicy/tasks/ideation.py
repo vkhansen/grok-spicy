@@ -8,7 +8,13 @@ from prefect import task
 
 from grok_spicy.client import MODEL_STRUCTURED, get_client
 from grok_spicy.prompts import ideation_user_message
-from grok_spicy.schemas import StoryPlan, VideoConfig
+from grok_spicy.schemas import (
+    Character,
+    PipelineConfig,
+    Scene,
+    StoryPlan,
+    VideoConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +74,54 @@ SPICY_SYSTEM_PROMPT = (
 )
 
 
+def _mock_story_plan(
+    concept: str,
+    ref_descriptions: dict[str, str] | None = None,
+) -> StoryPlan:
+    """Build a minimal StoryPlan for dry-run mode."""
+    # Use ref names as character names if available
+    names = list(ref_descriptions.keys()) if ref_descriptions else ["Alice", "Bob"]
+
+    characters = [
+        Character(
+            name=name,
+            role="protagonist" if i == 0 else "supporting",
+            visual_description=(
+                ref_descriptions[name]
+                if ref_descriptions and name in ref_descriptions
+                else f"[DRY-RUN] Placeholder appearance for {name}"
+            ),
+            personality_cues=["[DRY-RUN]"],
+        )
+        for i, name in enumerate(names[:2])
+    ]
+
+    scenes = [
+        Scene(
+            scene_id=i + 1,
+            title=f"[DRY-RUN] Scene {i + 1}",
+            description=f"[DRY-RUN] Placeholder scene {i + 1} for: {concept}",
+            characters_present=[c.name for c in characters],
+            setting="[DRY-RUN] Placeholder setting",
+            camera="medium shot, slow dolly forward",
+            mood="warm golden hour, soft shadows",
+            action=f"[DRY-RUN] Placeholder action for scene {i + 1}",
+            prompt_summary=f"[DRY-RUN] Scene {i + 1} action summary",
+            duration_seconds=8,
+        )
+        for i in range(3)
+    ]
+
+    return StoryPlan(
+        title=f"[DRY-RUN] {concept[:60]}",
+        style="[DRY-RUN] Cinematic realism with soft volumetric lighting",
+        color_palette="[DRY-RUN] warm ambers, deep blues",
+        aspect_ratio="16:9",
+        characters=characters,
+        scenes=scenes,
+    )
+
+
 @task(
     name="plan-story",
     retries=2,
@@ -77,6 +131,7 @@ def plan_story(
     concept: str,
     ref_descriptions: dict[str, str] | None = None,
     video_config: VideoConfig | None = None,
+    config: PipelineConfig | None = None,
 ) -> StoryPlan:
     """Generate a structured StoryPlan from a concept string.
 
@@ -84,12 +139,12 @@ def plan_story(
     reference photos), those descriptions are injected into the prompt so the
     LLM uses them verbatim instead of hallucinating appearance details.
     """
-    from xai_sdk.chat import system, user
+    if config is None:
+        config = PipelineConfig()
 
     system_prompt = SYSTEM_PROMPT
     if video_config and video_config.spicy_mode.enabled:
         system_prompt = SPICY_SYSTEM_PROMPT
-
 
     logger.info("Ideation starting — model=%s", MODEL_STRUCTURED)
     logger.info("Ideation concept: %s", concept)
@@ -104,14 +159,37 @@ def plan_story(
     if ref_descriptions:
         logger.debug("Ideation user message with ref descriptions: %s", user_message)
 
-    client = get_client()
-    chat = client.chat.create(model=MODEL_STRUCTURED)
-    chat.append(system(system_prompt))
-    chat.append(user(user_message))
+    # ── DRY-RUN: write prompts, return mock StoryPlan ──
+    if config.dry_run:
+        from grok_spicy.dry_run import write_prompt
 
-    logger.debug("Calling chat.parse(StoryPlan) for structured output")
-    _, plan = chat.parse(StoryPlan)
-    result: StoryPlan = plan
+        write_prompt(
+            "step1_ideation",
+            "story_plan",
+            model=MODEL_STRUCTURED,
+            system_prompt=system_prompt,
+            user_message=user_message,
+        )
+        logger.info("Dry-run: wrote ideation prompts")
+        result = _mock_story_plan(concept, ref_descriptions)
+    else:
+        from xai_sdk.chat import system, user
+
+        client = get_client()
+        chat = client.chat.create(model=MODEL_STRUCTURED)
+        chat.append(system(system_prompt))
+        chat.append(user(user_message))
+
+        logger.debug("Calling chat.parse(StoryPlan) for structured output")
+        _, plan = chat.parse(StoryPlan)
+        result = plan
+
+    if video_config and video_config.spicy_mode.enabled:
+        for char in result.characters:
+            for spicy_char in video_config.characters:
+                if char.name == spicy_char.name:
+                    char.spicy_traits = spicy_char.spicy_traits
+                    break
 
     logger.info(
         "Ideation complete — title=%r, style=%r, characters=%d, scenes=%d, "

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from prefect import task
 
@@ -66,6 +67,51 @@ def generate_character_sheet(
     if reference_image_path:
         logger.debug("Reference image path: %s", reference_image_path)
 
+    # ── DRY-RUN: write prompts, return mock ──
+    if config.dry_run:
+        from grok_spicy.dry_run import write_prompt
+
+        if reference_image_path:
+            gen_prompt = character_stylize_prompt(
+                style, character.visual_description, video_config
+            )
+            vision_prompt = character_vision_stylize_prompt(character)
+            write_prompt(
+                "step2_characters",
+                f"{character.name}_stylize",
+                model=MODEL_IMAGE,
+                prompt=gen_prompt,
+                image_refs=[reference_image_path],
+                api_params={"aspect_ratio": aspect_ratio},
+            )
+        else:
+            gen_prompt = character_generate_prompt(
+                style, character.visual_description, video_config
+            )
+            vision_prompt = character_vision_generate_prompt(character)
+            write_prompt(
+                "step2_characters",
+                f"{character.name}_generate",
+                model=MODEL_IMAGE,
+                prompt=gen_prompt,
+                api_params={"aspect_ratio": aspect_ratio},
+            )
+        write_prompt(
+            "step2_characters",
+            f"{character.name}_vision_check",
+            model=MODEL_REASONING,
+            prompt=vision_prompt,
+        )
+        logger.info("Dry-run: wrote character prompts for %r", character.name)
+        return CharacterAsset(
+            name=character.name,
+            portrait_url="dry-run://placeholder",
+            portrait_path=f"output/character_sheets/{character.name}_dry_run.jpg",
+            visual_description=character.visual_description,
+            consistency_score=1.0,
+            generation_attempts=0,
+        )
+
     client = get_client()
     best: dict = {"score": 0.0, "url": "", "path": ""}
     attempt = 0
@@ -80,17 +126,21 @@ def generate_character_sheet(
         )
 
         if reference_image_path:
-            prompt = character_stylize_prompt(style, character.visual_description, video_config)
+            prompt = character_stylize_prompt(
+                style, character.visual_description, video_config
+            )
             logger.info("Stylize prompt: %s", prompt)
             ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
             logger.debug("Encoded reference image to base64 data URI")
-            sample_kw = dict(
+            sample_kw: dict[str, Any] = dict(
                 model=MODEL_IMAGE,
                 image_url=ref_b64,
                 aspect_ratio=aspect_ratio,
             )
         else:
-            prompt = character_generate_prompt(style, character.visual_description, video_config)
+            prompt = character_generate_prompt(
+                style, character.visual_description, video_config
+            )
             logger.info("Generate prompt: %s", prompt)
             sample_kw = dict(model=MODEL_IMAGE, aspect_ratio=aspect_ratio)
 
@@ -115,9 +165,7 @@ def generate_character_sheet(
         # Vision verify
         chat = client.chat.create(model=MODEL_REASONING)
         if reference_image_path:
-            vision_prompt = character_vision_stylize_prompt(
-                character
-            )
+            vision_prompt = character_vision_stylize_prompt(character)
             logger.info(
                 "Vision verify (ref comparison, model=%s, character=%r): %s",
                 MODEL_REASONING,
@@ -132,9 +180,7 @@ def generate_character_sheet(
                 )
             )
         else:
-            vision_prompt = character_vision_generate_prompt(
-                character
-            )
+            vision_prompt = character_vision_generate_prompt(character)
             logger.info(
                 "Vision verify (text-only, model=%s, character=%r): %s",
                 MODEL_REASONING,

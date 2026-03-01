@@ -16,6 +16,7 @@ from grok_spicy.prompts import (
     video_fix_prompt,
     video_vision_prompt,
 )
+from grok_spicy.schemas import Character, Scene
 
 # ─── Character prompts ─────────────────────────────────────
 
@@ -35,15 +36,33 @@ def test_character_generate_prompt():
 
 
 def test_character_vision_stylize_prompt():
-    result = character_vision_stylize_prompt("red hair, blue eyes")
+    char = Character(
+        id="char1",
+        name="Test Character",
+        role="protagonist",
+        personality_cues=["brave"],
+        visual_description="red hair, blue eyes",
+        spicy_traits=["scars"],
+    )
+    result = character_vision_stylize_prompt(char)
     assert "likeness" in result
     assert "red hair, blue eyes" in result
+    assert "scars" in result
 
 
 def test_character_vision_generate_prompt():
-    result = character_vision_generate_prompt("tall, dark cloak")
+    char = Character(
+        id="char1",
+        name="Test Character",
+        role="antagonist",
+        personality_cues=["cunning"],
+        visual_description="tall, dark cloak",
+        spicy_traits=["hooded"],
+    )
+    result = character_vision_generate_prompt(char)
     assert "matches the description" in result
     assert "tall, dark cloak" in result
+    assert "hooded" in result
 
 
 # ─── Keyframe prompts ──────────────────────────────────────
@@ -112,15 +131,41 @@ def test_build_video_prompt_extended_no_semicolon():
 
 
 def test_keyframe_vision_prompt():
-    result = keyframe_vision_prompt()
+    scene = Scene(
+        scene_id=1,
+        title="Test Scene",
+        description="A scene for testing.",
+        characters_present=["char1"],
+        setting="A test setting.",
+        camera="close-up",
+        mood="dramatic",
+        action="A test action.",
+        prompt_summary="A test summary.",
+        duration_seconds=5,
+    )
+    result = keyframe_vision_prompt(scene)
     assert "Image 1 is a scene" in result
     assert "surgical fix prompt" in result
+    assert "A test action" in result
 
 
 def test_video_vision_prompt():
-    result = video_vision_prompt()
+    scene = Scene(
+        scene_id=1,
+        title="Test Scene",
+        description="A scene for testing.",
+        characters_present=["char1"],
+        setting="A test setting.",
+        camera="close-up",
+        mood="dramatic",
+        action="A test action.",
+        prompt_summary="A test summary.",
+        duration_seconds=5,
+    )
+    result = video_vision_prompt(scene)
     assert "last frame" in result
     assert "drifted" in result
+    assert "A test action" in result
 
 
 # ─── Fix / retry prompts ───────────────────────────────────

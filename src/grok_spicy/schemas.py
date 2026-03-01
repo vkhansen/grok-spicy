@@ -30,6 +30,10 @@ class Character(BaseModel):
     personality_cues: list[str] = Field(
         description="3-5 adjective/phrases for expression guidance"
     )
+    spicy_traits: list[str] = Field(
+        default_factory=list,
+        description="Specific 'spicy' details to be included in the character's appearance.",
+    )
 
 
 class Scene(BaseModel):
@@ -186,6 +190,7 @@ class PipelineConfig(BaseModel):
     max_retries: int | None = Field(default=None, ge=1)
     max_duration: int = Field(default=15, ge=3, le=15)
     debug: bool = False
+    dry_run: bool = False
 
     @property
     def max_char_attempts(self) -> int:
@@ -227,6 +232,7 @@ class PipelineState(BaseModel):
 class SpicyMode(BaseModel):
     """Global spicy-mode modifiers and prefix."""
 
+    enabled: bool = True
     enabled_modifiers: list[str]
     intensity: Literal["low", "medium", "high", "extreme"]
     global_prefix: str
@@ -242,6 +248,13 @@ class SpicyCharacter(BaseModel):
     spicy_traits: list[str] = []
 
 
+class NarrativeCore(BaseModel):
+    """Narrative constraints for spicy mode — restraint and escalation rules."""
+
+    restraint_rule: str = ""
+    escalation_arc: str = ""
+
+
 class DefaultVideo(BaseModel):
     """Fallback scene/motion/audio settings."""
 
@@ -255,5 +268,6 @@ class VideoConfig(BaseModel):
 
     version: str = "1.0"
     spicy_mode: SpicyMode
+    narrative_core: NarrativeCore | None = None
     characters: list[SpicyCharacter] = []
     default_video: DefaultVideo = DefaultVideo()
