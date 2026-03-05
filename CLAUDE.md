@@ -19,7 +19,7 @@ An automated video production pipeline that turns a fully explicit `video.json` 
 
 Five-step pipeline (Steps 2-6), each step a Prefect task, with an observer pattern for live updates. **There is no LLM ideation step** — the story plan comes directly from `video.json`.
 
-1. **Character Sheets** (Step 2) — `grok-imagine-image` text->image OR stylize from reference photo + `grok-4-1-fast-reasoning` vision verify loop
+1. **Character Sheets** (Step 2) — `grok-imagine-image` text->image OR stylize from reference photo + optional enhancement pass + `grok-4-1-fast-reasoning` vision verify loop
 2. **Keyframe Composition** (Step 3) — `grok-imagine-image` multi-image edit (max 3 refs) + vision consistency
 3. **Script Compilation** (Step 4) — pure Python, generates `script.md` + `state.json`
 4. **Video Generation** (Step 5) — `grok-imagine-video` image->video + drift correction via video edit (tier-aware: <=8s correction-eligible, 9-15s extended)
@@ -47,30 +47,37 @@ flowchart TD
 
     subgraph STEP2["STEP 2: Character Sheets (per character)"]
         direction TB
-        S2_P["PROMPT ASSEMBLY:<br/>'{style}. Full body character portrait of<br/>{visual_description}[, {spicy_traits}]'<br/>+ global_prefix + style_directive + modifiers"]
+        S2_CASE{"Case?"}
+        S2_P1["CASE 1 (desc only):<br/>'{style}. Full body portrait of<br/>{visual_description}[, {spicy_traits}]'"]
+        S2_P2["CASE 2 (images only):<br/>'{style}. Stylize photo...<br/>{visual_description}[, {spicy_traits}]'"]
+        S2_P3["CASE 3 (images + description):<br/>Pass 1: Stylize photo (identity only,<br/>NO spicy_traits)<br/>Pass 2: Enhance base portrait with<br/>{description} + {spicy_traits}"]
         S2_API["grok-imagine-image"]
         S2_MOD{"blocked?"}
         S2_REWORD["reword_prompt()<br/>LLM rewrites to pass moderation<br/>--- ONLY MUTATION POINT ---"]
-        S2_VIS["VISION CHECK:<br/>'Score how well portrait matches...<br/>Description: {visual_description}<br/>[+ spicy_traits checklist]'"]
+        S2_VIS["VISION CHECK:<br/>'Score how well portrait matches...'<br/>Case 3 Pass 2: 3-image compare<br/>(enhanced vs base vs reference)"]
         S2_VAPI["grok-4-1-fast-reasoning<br/>parse(ConsistencyScore)"]
         S2_OK{"score >= threshold?"}
         S2_RETRY["Retry with same prompt<br/>(up to max_char_attempts)"]
 
-        S2_P --> S2_API --> S2_MOD
+        S2_CASE -->|"no images"| S2_P1 --> S2_API
+        S2_CASE -->|"images, no desc"| S2_P2 --> S2_API
+        S2_CASE -->|"images + desc"| S2_P3 --> S2_API
+        S2_API --> S2_MOD
         S2_MOD -->|yes| S2_REWORD --> S2_API
         S2_MOD -->|no| S2_VIS --> S2_VAPI --> S2_OK
         S2_OK -->|no| S2_RETRY --> S2_API
         S2_OK -->|yes| S2_OUT
     end
 
-    STYLE_LOCK --> S2_P
-    CHAR_DESC --> S2_P
-    SC -->|"spicy_traits (verbatim)"| S2_P
-    SM -->|"global_prefix (prepended)"| S2_P
-    NC -->|"style_directive (appended)"| S2_P
-    SM -->|"enabled_modifiers (appended)"| S2_P
+    STYLE_LOCK --> S2_CASE
+    CHAR_DESC --> S2_CASE
+    SC -->|"spicy_traits (verbatim)"| S2_CASE
+    SC -->|"description (enhancements)"| S2_CASE
+    SM -->|"global_prefix (prepended)"| S2_API
+    NC -->|"style_directive (appended)"| S2_API
+    SM -->|"enabled_modifiers (appended)"| S2_API
 
-    S2_OUT["CharacterAsset<br/>{portrait_url, portrait_path}"]
+    S2_OUT["CharacterAsset<br/>{portrait_url, portrait_path,<br/>base_portrait_path (Case 3)}"]
 
     subgraph STEP3["STEP 3: Keyframes (per scene, sequential)"]
         direction TB
@@ -178,6 +185,7 @@ flowchart TD
 | `narrative_core.escalation_arc` | Appended as INVIOLABLE RULE | Additive (appended) |
 | `narrative_core.style_directive` | Appended to character + video prompts | Additive (appended) |
 | `character.spicy_traits` | Appended to character desc (local copy only) | Additive (appended) |
+| `characters[].description` | Enhancement pass input (Case 3: images + description) | Verbatim (as enhancement spec) |
 | *moderation reword* | Entire prompt rewritten by LLM | **Destructive** (only if blocked) |
 | *vision fix prompt* | New prompt generated from issues list | **Generated** (fix loop only) |
 
@@ -196,14 +204,22 @@ Observer calls are fire-and-forget — errors are caught and logged, never crash
 - **`db.py`** — 7-table SQLite schema (runs, characters, scenes, reference_images, character_assets, keyframe_assets, video_assets)
 - **`events.py`** — Thread-safe `EventBus` bridging sync pipeline -> async SSE via `asyncio.Queue`
 
-### Reference Images
+### Reference Images & Character Sheet Modes
 
 Character reference photos are defined in `video.json` under `characters[].images`:
 - Local paths are resolved relative to project root
 - URLs are downloaded to a staging directory before the run
 - Matched to `story_plan.characters` by name
-- `generate_character_sheet` uses `image_url` (single-image edit/stylize) when reference is provided
-- Characters without references generate from scratch
+
+Three character sheet generation modes based on what `characters[]` provides:
+
+| Case | `images` | `description` | Behavior |
+|------|----------|---------------|----------|
+| 1 | empty | any | Generate from `visual_description` text only |
+| 2 | provided | empty | Stylize from photo (single pass) |
+| 3 | provided | non-empty | Two-pass: base sheet from photo (identity), then enhance with `description` as modifications (clothes, marks, etc.) |
+
+In Case 3, the `description` field is treated as **enhancements** (outfit changes, accessories, skin effects) applied on top of the base likeness. `spicy_traits` are only applied in the enhancement pass, not the base pass.
 
 ## Key Constraints
 
@@ -291,7 +307,7 @@ grok-spicy/
     {
       "id": "char1",
       "name": "CharacterName",
-      "description": "Config-level description",
+      "description": "Enhancement spec (clothes, marks, etc.) — applied as modifications when images present",
       "images": ["source_images/photo.jpg"],
       "spicy_traits": ["trait merged into character prompts"]
     }
@@ -338,7 +354,7 @@ grok-spicy/
 }
 ```
 
-**Key rule:** `story_plan.characters[].name` must match `characters[].name` for spicy_traits and reference images to be merged correctly.
+**Key rule:** `story_plan.characters[].name` must match `characters[].name` for spicy_traits, reference images, and enhancement descriptions to be merged correctly.
 
 ## Conventions
 
@@ -353,6 +369,7 @@ grok-spicy/
 - All prompt construction lives in `prompts.py` as pure functions — one per prompt type
 - Pipeline is entirely config-driven via `video.json` — no code changes needed for new content
 - Character `spicy_traits` from `characters[]` are merged into plan characters by name match at pipeline start
+- When `characters[]` has both `images` and `description`, Step 2 runs a two-pass enhancement flow (base identity + modifications)
 
 ## Dry-Run Mode
 

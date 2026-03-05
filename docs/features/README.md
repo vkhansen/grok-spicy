@@ -89,6 +89,7 @@ graph TD
 | 13 | [Centralized Spicy Config](13-centralized-spicy-mode-config.md) | Refactor | video.json config-driven spicy mode |
 | 14 | [Remove Hardcoded Motion](14-remove-hardcoded-motion-suffix.md) | Quality | Clean up motion prompt construction |
 | 15 | [Multi-Backend Providers](15-local-comfyui-migration.md) | Architecture | Provider abstraction + ComfyUI/Ollama local backends |
+| 16 | [Character Clothes & Enhancement](16-character-clothes-enhancement.md) | Quality | Two-pass character sheets: base identity + outfit/modification enhancements |
 
 ## Suggested implementation phases
 

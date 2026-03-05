@@ -13,12 +13,10 @@ from grok_spicy.schemas import (
     Character,
     PipelineConfig,
     PipelineState,
-    StoryPlan,
     VideoConfig,
 )
 from grok_spicy.tasks.assembly import assemble_final_video
 from grok_spicy.tasks.characters import generate_character_sheet
-from grok_spicy.tasks.describe_ref import describe_reference_image
 from grok_spicy.tasks.keyframes import compose_keyframe
 from grok_spicy.tasks.script import compile_script
 from grok_spicy.tasks.video import generate_scene_video
@@ -369,14 +367,35 @@ def video_pipeline(
         # use a local `desc` copy).  This keeps the canonical description
         # clean for DB writes, vision checks, keyframes, and script output.
         # Violating this invariant corrupts the DB (bug #6).
+        #
+        # Enhancement mode (Case 3): when a config character has both
+        # images and a description, the description is passed as
+        # `enhancements` for a two-pass generation (base + enhance).
         logger.info("STEP 2: Character sheets — generating %d", len(plan.characters))
         print("=== STEP 2: Character sheets ===")
+
+        # Build {char_name: enhancement_text_or_None} lookup
+        _enhancements: dict[str, str | None] = {}
+        for c in plan.characters:
+            cfg_char = next(
+                (sc for sc in video_config.characters if sc.name == c.name), None
+            )
+            if cfg_char and cfg_char.images and cfg_char.description:
+                _enhancements[c.name] = cfg_char.description
+                logger.info(
+                    "Character %r: Case 3 (images + description) — enhancement mode",
+                    c.name,
+                )
+            else:
+                _enhancements[c.name] = None
+
         char_futures = [
             generate_character_sheet.submit(
                 c,
                 plan.style,
                 plan.aspect_ratio,
                 reference_image_path=matched_refs.get(c.name),
+                enhancements=_enhancements.get(c.name),
                 config=config,
                 video_config=video_config,
             )
