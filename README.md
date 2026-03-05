@@ -288,19 +288,98 @@ python -m grok_spicy --dry-run
 
 **Key rule:** `story_plan.characters[].name` must match `characters[].name` for spicy_traits, reference images, and enhancement descriptions to be merged correctly.
 
-| Field | Type | Description |
-|---|---|---|
-| `spicy_mode.enabled_modifiers` | string[] | Prompt modifiers appended to every generation |
-| `spicy_mode.intensity` | enum | `low` / `medium` / `high` / `extreme` |
-| `spicy_mode.global_prefix` | string | Text prepended to all prompts |
-| `characters[].name` | string | Must match `story_plan.characters[].name` |
-| `characters[].description` | string | Enhancement spec -- when images are present, applied as outfit/modification changes (Case 3) |
-| `characters[].images` | string[] | Reference image paths (local) or URLs |
-| `characters[].spicy_traits` | string[] | Per-character modifiers appended to prompts |
-| `narrative_core.restraint_rule` | string | Appended as INVIOLABLE RULE to keyframe + video prompts |
-| `narrative_core.escalation_arc` | string | Appended as INVIOLABLE RULE to keyframe + video prompts |
-| `narrative_core.style_directive` | string | Appended to character + video prompts |
-| `story_plan` | object | Full story plan with characters, scenes, style (all used verbatim) |
+### Field Reference
+
+Every field, where it's injected, and how it affects prompts:
+
+#### Top-level
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `version` | string | yes | Schema version, currently `"1.0"` |
+
+#### `spicy_mode` (required)
+
+Controls whether spicy modifiers, prefix, and narrative rules are injected into prompts. When `enabled` is `false`, all spicy injection is skipped — prompts use only `story_plan` fields.
+
+| Field | Type | Default | Where Used | Description |
+|---|---|---|---|---|
+| `enabled` | bool | `true` | All prompt builders | Master switch — gates all `global_prefix`, `enabled_modifiers`, `narrative_core`, and `style_directive` injection |
+| `enabled_modifiers` | string[] | — | Steps 2, 3, 5 | Appended as `**SPICY MODIFIERS:**` bullet list to character, keyframe, and video prompts. De-duplicated against per-character `spicy_traits` |
+| `intensity` | enum | — | Logging only | `"low"` / `"medium"` / `"high"` / `"extreme"` — logged at startup for reference but does not control prompt behavior (use `enabled_modifiers` to control what's injected) |
+| `global_prefix` | string | — | Steps 2, 3, 5 | Prepended verbatim to every image/video generation prompt (e.g. `"Photorealistic, sensual: "`) |
+| `extreme_emphasis` | string | `""` | **Unused** | Reserved field — defined in schema but not read by any prompt builder |
+
+#### `characters[]` (optional)
+
+Config-level character definitions that merge into `story_plan.characters` by name match. Provide these when you have reference photos or per-character spicy traits.
+
+| Field | Type | Default | Where Used | Description |
+|---|---|---|---|---|
+| `id` | string | — | Image resolution | Unique identifier used internally to map resolved image paths back to characters |
+| `name` | string | — | Name matching | Must match a `story_plan.characters[].name` exactly for traits/images/description to merge |
+| `description` | string | `""` | Step 2 (Case 3) | Enhancement spec — when `images` is also provided, this triggers two-pass generation: base portrait from photo, then enhancement pass applying this text as outfit/modification changes. If `images` is empty, this field is ignored |
+| `images` | string[] | `[]` | Step 2 | Reference image paths (local, resolved relative to project root) or URLs (downloaded to staging). First image used as `image_url` for stylize/enhance. Triggers Case 2 (images only) or Case 3 (images + description) |
+| `spicy_traits` | string[] | `[]` | Step 2 vision checks | Merged into the matching `story_plan` character's `spicy_traits`. Appended to character portrait prompts and checked in vision verification (e.g. `["wearing red dress", "visible tattoo on left arm"]`) |
+
+#### `default_video` (optional)
+
+| Field | Type | Default | Where Used | Description |
+|---|---|---|---|---|
+| `scene` | string | `""` | **Unused** (was ideation) | Default scene/setting — was injected into LLM ideation prompts, which are now disabled. Retained for schema compatibility |
+| `motion` | string | `""` | **Unused** (was ideation) | Default motion description — same as above |
+| `audio_cues` | string | `""` | **Unused** (was ideation) | Audio atmosphere hints — same as above |
+
+> **Note:** `default_video` fields were used by the now-disabled ideation step. With explicit `story_plan` scenes, all scene/motion/setting information comes from individual scene fields instead. These fields are harmless to keep but have no effect on the pipeline.
+
+#### `narrative_core` (optional)
+
+Narrative constraints appended to generation and vision-check prompts when `spicy_mode.enabled` is `true`.
+
+| Field | Type | Default | Where Used | Description |
+|---|---|---|---|---|
+| `restraint_rule` | string | `""` | Steps 3, 5 + vision checks | Appended as `**INVIOLABLE RULES:** - **Restraint Rule**: {value}` to keyframe composition, video generation, keyframe vision check, and video vision check prompts |
+| `escalation_arc` | string | `""` | Steps 3, 5 + vision checks | Appended as `**INVIOLABLE RULES:** - **Escalation Arc**: {value}` alongside `restraint_rule` to the same prompts |
+| `style_directive` | string | `""` | Steps 2, 5 | Appended to character portrait prompts (generate, stylize, enhance) and video generation prompts. Not injected into keyframe or vision-check prompts |
+
+#### `story_plan` (required)
+
+The complete story definition. All fields are used **verbatim** — no LLM rewrites.
+
+| Field | Type | Default | Where Used | Description |
+|---|---|---|---|---|
+| `title` | string | — | Script header, DB, logging | Story title — appears in `script.md` header and run metadata |
+| `style` | string | — | Steps 2, 3, 5 | Visual style string prepended to every image/video prompt (the "style lock"). E.g. `"Cinematic realism with soft volumetric lighting"` |
+| `aspect_ratio` | string | `"16:9"` | Step 2 (image gen) | Passed to `grok-imagine-image` as the aspect ratio parameter |
+| `color_palette` | string | — | Step 3 | Injected into keyframe composition prompts as `"Color palette: {value}"` |
+
+#### `story_plan.characters[]` (required)
+
+| Field | Type | Where Used | Description |
+|---|---|---|---|
+| `name` | string | Steps 2, 3, 4, 5 | Character identifier — used everywhere. Must match `characters[].name` for trait/image merging |
+| `role` | string | Script metadata | `"protagonist"` / `"antagonist"` / `"supporting"` — stored in DB and script.md |
+| `visual_description` | string | Steps 2, 3 | **Frozen verbatim description** (min ~80 words recommended). Copy-pasted into every character portrait prompt and keyframe composition prompt. Never paraphrased or summarized. This is the single source of truth for appearance |
+| `personality_cues` | string[] | Script metadata | 3-5 adjective/phrases for expression guidance. Stored in DB, not injected into image prompts |
+| `spicy_traits` | string[] | Step 2 | Additional traits merged from `characters[].spicy_traits` by name match. Appended to portrait generation prompts and checked in vision verification |
+
+#### `story_plan.scenes[]` (required)
+
+Each scene produces one keyframe (Step 3) and one video clip (Step 5). Scenes are processed sequentially.
+
+| Field | Type | Default | Where Used | Description |
+|---|---|---|---|---|
+| `scene_id` | int | — | All steps | Unique scene number — used to order scenes and match keyframes to videos |
+| `title` | string | — | Step 3, script.md | Brief scene title (3-6 words) — injected into keyframe prompt as `"Scene: {title}"` |
+| `description` | string | — | Script.md only | Narrative description (2-3 sentences). Appears only in the storyboard markdown, **not** in any image/video prompt |
+| `characters_present` | string[] | Step 3 | Character names present in this scene. Their portrait refs are included as `image_urls` in the keyframe edit call. Names must match `story_plan.characters[].name` |
+| `setting` | string | — | Step 3 | Physical environment, time of day, weather — injected into keyframe prompt as `"Setting: {value}"` |
+| `camera` | string | — | Steps 3, 5 | Shot type + movement (e.g. `"medium shot, slow dolly forward"`) — injected into keyframe prompt as `"Camera: {value}"` and into video prompt |
+| `mood` | string | — | Steps 3, 5 | Lighting/atmosphere (e.g. `"warm golden hour, soft shadows"`) — injected into keyframe prompt and video prompt |
+| `action` | string | — | Steps 3, 5 | Primary motion (e.g. `"Fox leaps over fallen log"`) — injected into keyframe prompt as `"Action: {value}"` and into video prompt. For extended scenes (>8s), split on `;` into Phase 1/Phase 2 |
+| `prompt_summary` | string | — | Steps 3, 5 | Concise action sentence (max ~30 words) — injected into keyframe prompt as scene description and as the main text of the video prompt |
+| `duration_seconds` | int | — | Step 5 | Video duration in seconds (3-15). Determines generation tier: **3-8s** = correction-eligible (drift fix loop), **9-15s** = extended (phased prompt, retry-only on score < 0.50) |
+| `transition` | string | `"cut"` | Step 6 | `"cut"` / `"crossfade"` / `"match-cut"` — used by FFmpeg assembly |
 
 ### Character Image References
 
