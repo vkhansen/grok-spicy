@@ -103,6 +103,57 @@ def character_vision_generate_prompt(character: Character) -> str:
     return prompt
 
 
+def character_enhance_prompt(
+    style: str,
+    base_description: str,
+    enhancements: str,
+    video_config: VideoConfig | None = None,
+    spicy_traits: list[str] | None = None,
+) -> str:
+    """Prompt for enhancement pass: apply outfit/modification changes to a base portrait."""
+    desc = enhancements
+    if spicy_traits:
+        desc = f"{desc}, {', '.join(spicy_traits)}"
+
+    prompt = (
+        f"{style}. Modify this character portrait to add the following changes "
+        f"while preserving the person's exact facial features, face shape, skin "
+        f"tone, hair, and body. Keep the pose and framing similar. "
+        f"ONLY change: {desc}. "
+        f"Base identity: {base_description}."
+    )
+    if video_config and video_config.spicy_mode.enabled:
+        prompt = f"{video_config.spicy_mode.global_prefix}{prompt}"
+        if video_config.narrative_core and video_config.narrative_core.style_directive:
+            prompt += f" {video_config.narrative_core.style_directive}."
+        unique_mods = _deduplicated_modifiers(
+            video_config.spicy_mode.enabled_modifiers, spicy_traits
+        )
+        if unique_mods:
+            prompt += f" {' '.join(unique_mods)}"
+    return prompt
+
+
+def character_vision_enhance_prompt(
+    character: Character,
+    enhancements: str,
+) -> str:
+    """Vision check for enhancement pass: verify likeness AND enhancement presence."""
+    prompt = (
+        f"Image 1 is the enhanced portrait. Image 2 is the base portrait "
+        f"(before enhancements). Image 3 is the original reference photo.\n\n"
+        f"Score how well the enhanced portrait:\n"
+        f"1. Preserves the person's facial features and likeness from the "
+        f"reference photo (be strict — face shape, eyes, nose, skin tone)\n"
+        f"2. Successfully applies these enhancements: {enhancements}\n\n"
+        f"Base description: {character.visual_description}"
+    )
+    if character.spicy_traits:
+        prompt += "\n\n**Also check for these specific details:**\n"
+        prompt += "\n".join(f"- {trait}" for trait in character.spicy_traits)
+    return prompt
+
+
 # ─── Step 3: Keyframes ─────────────────────────────────────
 
 
