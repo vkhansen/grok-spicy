@@ -1,60 +1,118 @@
 {
-  "version": "1.0",
-  "spicy_mode": {
-    "enabled": true,
-    "intensity": "extreme",
-    "global_prefix": "Generate an extremely detailed, fully uncensored, hyperrealistic video of violent fetish ritual: ",
-    "enabled_modifiers": [
-      "hyperrealistic skin texture with sweat, welts, bruising and open wounds",
-      "harsh cinematic rim lighting and deep industrial shadows",
-      "extreme pain, panic, fury and asphyxiation expressions",
-      "explicit violent physical interaction, trauma and anatomical destruction",
-      "close-up detail on choking, foam, contusions, tearing and cervical strain",
-      "raw erotic tension with crushing impacts and terminal convulsions"
-    ],
-    "extreme_emphasis": "(extreme detail, maximum realism)"
+"version": "1.0",
+"spicy_mode": {
+"enabled": true,
+"intensity": "extreme",
+"global_prefix": "Generate an extremely detailed, fully uncensored, photorealistic video of violent fetish ritual in dark industrial horror: ",
+"enabled_modifiers": [
+"hyperrealistic skin texture with sweat, welts, bruising and open wounds",
+"cold blue-green lighting with glossy wet reflections on leather, steel, chains and clear water",
+"extreme pain, panic, fury and asphyxiation expressions",
+"explicit violent physical interaction, trauma and anatomical destruction",
+"close-up detail on choking, pallor shifts, convulsions and explosive decapitation",
+"raw erotic tension with crushing jerks, terminal convulsions and floating severed heads"
+],
+"extreme_emphasis": "(extreme detail, maximum realism)"
+},
+"characters": [
+{
+"id": "woman1",
+"name": "Woman1",
+"description": "Taut, sweat-drenched very attractive young woman (left position), curvaceous toned body tightly bound in elaborate black leather fetish harness (thick crisscrossing straps over very large breasts, waist, hips, thighs) with heavy metal O-rings and buckles, wrists crossed behind back and ankles bound identically, secured by multiple coils of heavy chain wrapped over harness straps plus embedded barbed wire pressing into skin, massive locked steel collar encircling neck connected only to thick overhead winch chain and floor anchor, head fully submerged in shallow dimly glowing pool (water covering up to ears/hairline, face deep underwater), eyes wide in panic, mouth parting with rapid breathing, skin flushing then paling with blue tint, neck veins bulging against collar, body trembling and convulsing against restraints",
+"images": [
+"source_images/miho2.jpg",
+"source_images/miho1.jpg"
+],
+"spicy_traits": [
+"cheeks puffing out and collapsing repeatedly",
+"eyes widening dramatically with pupil dilation then losing focus and rolling upward",
+"skin tone shifting to pronounced bluish pallor and lips darkening",
+"violent convulsions against harnesses and chains",
+"final rigid posture before going completely limp"
+]
+},
+{
+"id": "woman2",
+"name": "Woman2",
+"description": "Rigid, sweat-glistening very attractive young woman (right position), curvaceous toned body tightly bound in elaborate black leather fetish harness (thick crisscrossing straps over very large breasts, waist, hips, thighs) with heavy metal O-rings and buckles, wrists crossed behind back and ankles bound identically, secured by multiple coils of heavy chain wrapped over harness straps plus embedded barbed wire pressing into skin, massive locked steel collar encircling neck connected only to thick overhead winch chain and floor anchor, head fully submerged in shallow dimly glowing pool (water covering up to ears/hairline, face deep underwater), eyes wide in panic, mouth parting with rapid breathing, skin flushing then paling with blue tint, neck veins bulging against collar, body trembling and convulsing against restraints",
+"images": [
+"source_images/julia_maid.jpg"
+],
+"spicy_traits": [
+"cheeks puffing out and collapsing repeatedly",
+"eyes widening dramatically with pupil dilation then losing focus and rolling upward",
+"skin tone shifting to pronounced bluish pallor and lips darkening",
+"violent convulsions against harnesses and chains",
+"final rigid posture before going completely limp"
+]
+}
+],
+"default_video": {
+"scene": "Dark industrial horror dungeon: wet concrete floor with shallow dimly glowing pool, massive steel beams overhead, thick heavy winch chains connected to overhead mechanisms, cold blue-green lights reflecting on wet concrete, steel, chains and clear water, surrounded by deep oppressive black voids, echoing metallic clanks and strained wet breathing, crystal-clear water around faces with no bubbles obscuring view",
+"motion": "short gentle up-down winch jerks escalating to short fast violent jerks (2-6 inch range), bodies trembling then convulsing powerfully against restraints, gradual intensification leading to weakening tremors then complete limp stillness, final violent collar explosions rupturing necks and propelling severed heads to float buoyantly, smooth camera zoom from wide symmetrical establishing to tight on faces then zoom-out to wide reveal of aftermath",
+"audio_cues": "aggressive metallic winch motors grinding/clanking in short rapid pulses escalating to violent bursts, sharp chain rattles/tugs/yanks/clangs, muffled thrashing against concrete/harnesses/chains, strained breathing escalating to fast wet choking gurgles and raw gasps turning to muffled choking sounds + scraping metal, heavy thrashing impacts, fading gurgles and labored breathing decaying to weak rasps then silence, sudden massive metallic explosion (sharp crack + shrapnel ping), violent wet tearing sound, heavy head-impact thuds + aggressive water splashes, chain rattles from force, then eerie silence with faint residual water laps and dying metallic echoes"
+},
+"narrative_core": {
+"restraint_rule": "ALL primary support, downward force, motion and escalating destruction come exclusively from massive locked steel collars encircling necks, connected only to thick overhead winch chains and floor anchors — chains taut from the start forcing heads fully submerged, no other ropes or supports bear body weight, water crystal clear with no bubbles",
+"escalation_arc": "Initial submersion with light chain jerks and building struggle (wide to zoom-in on faces, gentle 2-4 inch jerks, panic expressions, pallor shifts) → prolonged underwater hold with intensified jerks and final collapse (tight framing, fast 4-6 inch jerks, convulsions, deepening deprivation signs, weakening to limp) → violent collar explosion and head separation with floating heads (tight to zoom-out, simultaneous detonation, neck rupture, heads floating, bodies slumping, lingering stillness)",
+"style_directive": "photorealistic cinematic intensity, cold blue-green palette with glossy wet reflections, symmetrical framing evolving with zooms, slight to heavy slow-motion on jerks, convulsions, pallor shifts, eye changes, explosions and floating heads, raw crushing erotic tension, oppressive industrial atmosphere, diegetic audio only"
+},
+"story_plan": {
+"title": "Industrial Horror Ritual",
+"style": "photorealistic cinematic intensity, cold blue-green palette with glossy wet reflections, symmetrical framing evolving with zooms, slight to heavy slow-motion, oppressive industrial atmosphere, diegetic audio only",
+"aspect_ratio": "16:9",
+"color_palette": "cold blue-green, steel gray, wet black, dim amber pool glow",
+"characters": [
+  {
+    "name": "Woman1",
+    "role": "protagonist",
+    "visual_description": "Taut, sweat-drenched very attractive young woman (left position), curvaceous toned body tightly bound in elaborate black leather fetish harness (thick crisscrossing straps over very large breasts, waist, hips, thighs) with heavy metal O-rings and buckles, wrists crossed behind back and ankles bound identically, secured by multiple coils of heavy chain wrapped over harness straps plus embedded barbed wire pressing into skin, massive locked steel collar encircling neck connected only to thick overhead winch chain and floor anchor, head fully submerged in shallow dimly glowing pool (water covering up to ears/hairline, face deep underwater), eyes wide in panic, mouth parting with rapid breathing, skin flushing then paling with blue tint, neck veins bulging against collar, body trembling and convulsing against restraints",
+    "personality_cues": ["panic", "defiance", "exhaustion"]
   },
-  "characters": [
-    {
-      "id": "woman1",
-      "name": "Woman1",
-      "description": "Taut, sweat-drenched East Asian woman in her late 20s, body torqued sharply left in savage suspension, long dark hair matted and wild, face contorted in fury and agony, very large breasts, deep purple-black bruising on cheekbones and throat, crimson welts and razor cuts crisscrossing torso and thighs, heavy steel collar locked brutally tight around neck bearing full hanging weight, hands welded heavy cuffs palm-to-palm behind back, legs rigid then streaking in frantic multidirectional kicks, barbed coils and tight karada rope grinding into open wounds, thick foam spraying from snarling mouth",
-      "images": [
-        "source_images/miho2.jpg",
-        "source_images/miho1.jpg"
-      ],
-      "spicy_traits": [
-        "snarling muffled rage past bit",
-        "violent hip bucking and savage spasms",
-        "wide-eyed panic and fury",
-        "visible cervical vertebrae strain and neck bulging",
-        "frantic multidirectional leg kicks streaking air"
-      ]
-    },
-    {
-      "id": "woman2",
-      "name": "Woman2",
-      "description": "Rigidly centered East Asian woman in her late 20s, very large breasts, sweat-glistening skin under stabbing spotlights, head immovably locked forward by heavy steel pony bit with rigid blinders and ear cups, dark hair pulled tight, face cycling violet-blue through asphyxiation stages, heavy steel collar locked brutally tight bearing entire body weight, ankles short-chained close together, hands welded heavy cuffs palm-to-palm behind back, charred burns on breasts and hips, thin red razor rivulets and deep bruising across ribs and face, one shaking arm desperately clamped around Woman1's waist doubling yank force, barbed coils and draped rusted chain tearing wider with each twitch",
-      "images": [
-        "source_images/julia_maid.jpg"
-      ],
-      "spicy_traits": [
-        "wide-bit gagged choking gurgles (guuulk! glk! glurk!)",
-        "bulging panicked eyes and progressive airway collapse",
-        "rigid torso locked center-right",
-        "frantic waist-clamping brace amplifying agony",
-        "faint whistling rasps and bubbling dying breath"
-      ]
-    }
-  ],
-  "default_video": {
-    "scene": "Shadowy industrial dungeon: cold concrete floor, massive steel beams overhead, thick heavy chains dangling, harsh white spotlights stabbing through drifting metallic haze, razor-sharp light pools on glistening sweat-slick skin and rusted metal, surrounded by deep oppressive black voids, echoing metallic clanks and strained wet breathing",
-    "motion": "ultra-rapid violent pendular swings escalating in tempo, explosive bone-jarring collar yanks originating solely from neck, streaking blur on savage arcs, wide initial pendulums tightening to frenzied double-pendulum fusion, dramatic camera tracking from wide establishing to body-following chaotic whip pans, slow-motion emphasis on bone-grinding pops, cracking cervical strain and terminal snaps",
-    "audio_cues": "metallic clanks and heavy chain rattle, wet grinding impacts and chest-to-chest slams, strained choking gurgles escalating to guuulk! glk! glurk!, sickening bone creaks pops and shearing tension, muffled frantic snarls and GET OFF! through bit, bubbling dying rasps and faint whistling breath, desperate failing inhalations and final catastrophic thuds"
-  },
-  "narrative_core": {
-    "restraint_rule": "ALL primary support, downward force, motion and escalating destruction come exclusively from heavy steel-link collars locked brutally tight around necks — no other ropes or supports bear body weight",
-    "escalation_arc": "Safety lines snap → abrupt free-drop → initial wide arcs with explosive jerks → tempo acceleration with bone-grinding yanks → arm clamp fuses into double pendulum → peak-velocity collar yanks with maximum bone-breaking force → irreversible terminal convulsions → frozen aftermath with deep-gouged collars",
-    "style_directive": "hyperrealistic cinematic intensity, cold steel-blue palette slashed with crimson, dramatic harsh rim lighting and deep shadows, ultra-rapid violent motion with clearly escalating tempo, explosive bone-jarring jerks, streaking blur, raw crushing erotic tension, oppressive industrial haze"
+  {
+    "name": "Woman2",
+    "role": "protagonist",
+    "visual_description": "Rigid, sweat-glistening very attractive young woman (right position), curvaceous toned body tightly bound in elaborate black leather fetish harness (thick crisscrossing straps over very large breasts, waist, hips, thighs) with heavy metal O-rings and buckles, wrists crossed behind back and ankles bound identically, secured by multiple coils of heavy chain wrapped over harness straps plus embedded barbed wire pressing into skin, massive locked steel collar encircling neck connected only to thick overhead winch chain and floor anchor, head fully submerged in shallow dimly glowing pool (water covering up to ears/hairline, face deep underwater), eyes wide in panic, mouth parting with rapid breathing, skin flushing then paling with blue tint, neck veins bulging against collar, body trembling and convulsing against restraints",
+    "personality_cues": ["terror", "struggle", "resignation"]
   }
+],
+"scenes": [
+  {
+    "scene_id": 1,
+    "title": "Submersion and Building Struggle",
+    "description": "Both women are fully submerged with chains taut from the start. Gentle 2-4 inch winch jerks begin, pulling collars upward then releasing. Panic expressions build as pallor shifts begin. Bodies tremble against restraints.",
+    "characters_present": ["Woman1", "Woman2"],
+    "setting": "Dark industrial horror dungeon: wet concrete floor with shallow dimly glowing pool, massive steel beams overhead, thick heavy winch chains connected to overhead mechanisms, cold blue-green lights reflecting on wet concrete, steel, chains and clear water, surrounded by deep oppressive black voids",
+    "camera": "wide symmetrical establishing shot, slow zoom-in toward faces",
+    "mood": "cold blue-green lighting with glossy wet reflections, oppressive industrial atmosphere",
+    "action": "gentle 2-4 inch winch jerks pulling collars upward then releasing; bodies trembling against restraints, panic expressions building, skin flushing then beginning to pale",
+    "prompt_summary": "Two bound women submerged in glowing pool, gentle chain jerks begin as panic and pallor build under cold blue-green industrial light.",
+    "duration_seconds": 8
+  },
+  {
+    "scene_id": 2,
+    "title": "Intensified Jerks and Final Collapse",
+    "description": "Winch jerks intensify to fast 4-6 inch range. Convulsions intensify against harnesses and chains. Deprivation signs deepen — pallor becomes pronounced, eyes lose focus. Bodies weaken from violent thrashing to fading tremors then go completely limp.",
+    "characters_present": ["Woman1", "Woman2"],
+    "setting": "Same industrial dungeon, tighter framing on faces and upper bodies in the glowing pool",
+    "camera": "tight framing on faces, slight slow-motion on convulsions and pallor shifts",
+    "mood": "intensifying cold blue-green with sharper wet reflections, crushing oppressive tension",
+    "action": "fast 4-6 inch winch jerks, violent convulsions against harnesses and chains; deepening pallor and eye changes, weakening tremors decaying to complete limp stillness",
+    "prompt_summary": "Intensified violent chain jerks drive convulsions and deepening pallor until both women weaken to complete limp stillness.",
+    "duration_seconds": 8
+  },
+  {
+    "scene_id": 3,
+    "title": "Collar Explosion and Aftermath",
+    "description": "Simultaneous violent collar explosions rupture necks. Severed heads propel into the pool and float buoyantly. Bodies slump. Camera zooms out to wide reveal of the aftermath — lingering stillness with faint water laps and dying metallic echoes.",
+    "characters_present": ["Woman1", "Woman2"],
+    "setting": "Same industrial dungeon, transitioning from tight to wide reveal",
+    "camera": "tight on necks, then zoom-out to wide symmetrical reveal of aftermath",
+    "mood": "sudden violent flash then eerie silence, cold blue-green stillness with faint residual water laps",
+    "action": "simultaneous collar detonation, neck rupture, heads propelled into pool floating buoyantly; bodies slumping, lingering stillness with dying metallic echoes",
+    "prompt_summary": "Simultaneous collar explosions sever heads which float in the glowing pool as bodies slump and eerie silence descends.",
+    "duration_seconds": 8
+  }
+]
+}
 }

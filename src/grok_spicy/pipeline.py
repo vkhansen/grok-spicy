@@ -19,10 +19,11 @@ from grok_spicy.schemas import (
 from grok_spicy.tasks.assembly import assemble_final_video
 from grok_spicy.tasks.characters import generate_character_sheet
 from grok_spicy.tasks.describe_ref import describe_reference_image
-from grok_spicy.tasks.ideation import plan_story
 from grok_spicy.tasks.keyframes import compose_keyframe
 from grok_spicy.tasks.script import compile_script
 from grok_spicy.tasks.video import generate_scene_video
+
+# Note: tasks/ideation.py is no longer used — story plans come from video.json.
 
 logger = logging.getLogger(__name__)
 
@@ -190,82 +191,80 @@ def _match_character_refs(
     log_prints=True,
 )
 def video_pipeline(
-    concept: str,
+    video_config: VideoConfig,
     observer: PipelineObserver | None = None,
     character_refs: dict[str, str] | None = None,
     config: PipelineConfig | None = None,
-    script_plan: StoryPlan | None = None,
-    video_config: VideoConfig | None = None,
-    # Deprecated kwargs — kept for backward compat (web.py, tests)
-    debug: bool = False,
-    max_duration: int = 15,
 ) -> str:
     """End-to-end video generation pipeline.
 
-    Takes a concept string and produces a final assembled video.
+    All input comes from video_config (loaded from video.json).
+    The story_plan field defines characters and scenes explicitly —
+    no LLM ideation step.
     """
     if config is None:
-        config = PipelineConfig(debug=debug, max_duration=max_duration)
+        config = PipelineConfig()
     if observer is None:
         observer = NullObserver()
     if character_refs is None:
         character_refs = {}
 
-    logger.info("Pipeline started — concept=%r, refs=%d", concept, len(character_refs))
-    if video_config is not None:
-        logger.info(
-            "Spicy mode active — v%s, intensity=%s, %d config characters, "
-            "%d modifiers",
-            video_config.version,
-            video_config.spicy_mode.intensity,
-            len(video_config.characters),
-            len(video_config.spicy_mode.enabled_modifiers),
-        )
-        print(
-            f"=== SPICY MODE: intensity={video_config.spicy_mode.intensity}, "
-            f"characters={len(video_config.characters)} ==="
+    if video_config.story_plan is None:
+        raise ValueError(
+            "video_config.story_plan is required — define a story_plan "
+            "section in video.json with title, style, characters, and scenes."
         )
 
-        # Resolve config character images and merge into character_refs.
-        # Use a run-scoped staging directory (UUID) to prevent collision
-        # when multiple runs download the same config images concurrently.
-        import uuid
+    concept = video_config.story_plan.title
+    logger.info("Pipeline started — title=%r, refs=%d", concept, len(character_refs))
+    logger.info(
+        "Config — v%s, intensity=%s, %d config characters, %d modifiers",
+        video_config.version,
+        video_config.spicy_mode.intensity,
+        len(video_config.characters),
+        len(video_config.spicy_mode.enabled_modifiers),
+    )
+    print(
+        f"=== CONFIG: intensity={video_config.spicy_mode.intensity}, "
+        f"characters={len(video_config.characters)} ==="
+    )
 
-        from grok_spicy.config import resolve_character_images
+    # Resolve config character images and merge into character_refs.
+    import uuid
 
-        staging_id = uuid.uuid4().hex[:8]
-        resolved_images = resolve_character_images(video_config)
-        for cfg_char in video_config.characters:
-            imgs = resolved_images.get(cfg_char.id, [])
-            if imgs and cfg_char.name not in character_refs:
-                # Use the first image as the reference for this character
-                first_img = imgs[0]
-                if not first_img.startswith(("http://", "https://")):
-                    character_refs[cfg_char.name] = first_img
+    from grok_spicy.config import resolve_character_images
+
+    staging_id = uuid.uuid4().hex[:8]
+    resolved_images = resolve_character_images(video_config)
+    for cfg_char in video_config.characters:
+        imgs = resolved_images.get(cfg_char.id, [])
+        if imgs and cfg_char.name not in character_refs:
+            first_img = imgs[0]
+            if not first_img.startswith(("http://", "https://")):
+                character_refs[cfg_char.name] = first_img
+                logger.info(
+                    "Config: added local ref image for %r: %s",
+                    cfg_char.name,
+                    first_img,
+                )
+            elif not config.dry_run:
+                safe = cfg_char.name.replace(" ", "_")
+                dest = f"output/staging/{staging_id}/references/{safe}_config.jpg"
+                try:
+                    download(first_img, dest)
+                    character_refs[cfg_char.name] = dest
                     logger.info(
-                        "Spicy config: added local ref image for %r: %s",
+                        "Config: downloaded ref image for %r: %s",
+                        cfg_char.name,
+                        dest,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to download config image for %r: %s",
                         cfg_char.name,
                         first_img,
+                        exc_info=True,
                     )
-                elif not config.dry_run:
-                    # Download URL to run-scoped staging (skip in dry-run)
-                    safe = cfg_char.name.replace(" ", "_")
-                    dest = f"output/staging/{staging_id}/references/{safe}_config.jpg"
-                    try:
-                        download(first_img, dest)
-                        character_refs[cfg_char.name] = dest
-                        logger.info(
-                            "Spicy config: downloaded ref image for %r: %s",
-                            cfg_char.name,
-                            dest,
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Failed to download config image for %r: %s",
-                            cfg_char.name,
-                            first_img,
-                            exc_info=True,
-                        )
 
     run_id = observer.on_run_start(concept)
     logger.info("Run ID assigned: %d", run_id)
@@ -302,120 +301,36 @@ def video_pipeline(
         character_refs = updated_refs
 
     try:
-        if script_plan is not None:
-            # ═══ SCRIPT MODE: skip ideation, use pre-built plan ═══
-            logger.info("SCRIPT MODE: using pre-built plan, skipping ideation")
-            print("=== SCRIPT MODE: Using provided plan (ideation skipped) ===")
-            plan = script_plan
-            # Use character_refs passed from caller (restored from state.json
-            # or provided via --ref) instead of hardcoding empty.
-            matched_refs = _match_character_refs(
-                character_refs, plan.characters, dry_run=config.dry_run
-            )
-            print(
-                f"-> {plan.title}: {len(plan.characters)} chars, "
-                f"{len(plan.scenes)} scenes"
-            )
-            _notify(observer, "on_plan", run_id, plan)
-        else:
-            # ═══ PRE-IDEATION: ANALYZE REFERENCE IMAGES ═══
-            ref_descriptions: dict[str, str] | None = None
-            if character_refs:
-                logger.info(
-                    "Pre-ideation: analyzing %d reference images",
-                    len(character_refs),
-                )
-                print("=== Pre-ideation: Analyzing reference images ===")
-                desc_futures = [
-                    describe_reference_image.submit(name, path, config=config)
-                    for name, path in character_refs.items()
-                ]
-                ref_descriptions = {}
-                for fut in desc_futures:
-                    desc = fut.result()
-                    ref_descriptions[desc.name] = desc.visual_description
-                    logger.info(
-                        "Reference described: %s (%d words)",
-                        desc.name,
-                        len(desc.visual_description.split()),
-                    )
-                    print(f"  {desc.name}: description extracted")
+        # ═══ PLAN FROM CONFIG (no ideation) ═══
+        plan = video_config.story_plan  # type: ignore[assignment]  # validated above
+        logger.info(
+            "Plan loaded from config: title=%r, characters=%d, scenes=%d, "
+            "style=%r, aspect=%s",
+            plan.title,
+            len(plan.characters),
+            len(plan.scenes),
+            plan.style,
+            plan.aspect_ratio,
+        )
+        print(
+            f"-> {plan.title}: {len(plan.characters)} chars, "
+            f"{len(plan.scenes)} scenes"
+        )
+        _notify(observer, "on_plan", run_id, plan)
 
-            # ═══ STEP 1: IDEATION ═══
-            logger.info("STEP 1: Ideation — generating story plan")
-            print("=== STEP 1: Planning story ===")
+        # Merge spicy_traits from config characters into plan characters
+        for char in plan.characters:
+            for cfg_char in video_config.characters:
+                if char.name == cfg_char.name and cfg_char.spicy_traits:
+                    char.spicy_traits = cfg_char.spicy_traits
+                    break
 
-            # video_config is passed to plan_story() which injects
-            # global_prefix, INVIOLABLE RULES, and SPICY MODIFIERS via
-            # ideation_user_message() and activates SPICY_SYSTEM_PROMPT.
-            plan = plan_story(
-                concept,
-                ref_descriptions=ref_descriptions,
-                config=config,
-                video_config=video_config,
-            )
-            logger.info(
-                "STEP 1 complete: title=%r, characters=%d, scenes=%d, "
-                "style=%r, aspect=%s",
-                plan.title,
-                len(plan.characters),
-                len(plan.scenes),
-                plan.style,
-                plan.aspect_ratio,
-            )
-            for c in plan.characters:
-                logger.debug(
-                    "Character planned: name=%r, role=%r, visual_desc_len=%d",
-                    c.name,
-                    c.role,
-                    len(c.visual_description),
-                )
-            for s in plan.scenes:
-                logger.debug(
-                    "Scene planned: id=%d, title=%r, chars=%s, duration=%ds",
-                    s.scene_id,
-                    s.title,
-                    s.characters_present,
-                    s.duration_seconds,
-                )
-            print(
-                f"-> {plan.title}: {len(plan.characters)} chars, "
-                f"{len(plan.scenes)} scenes"
-            )
-            _notify(observer, "on_plan", run_id, plan)
-
-            # Match uploaded reference names to generated character names
-            matched_refs = _match_character_refs(
-                character_refs, plan.characters, dry_run=config.dry_run
-            )
-            if matched_refs:
-                print(f"  Ref images matched: {list(matched_refs.keys())}")
-
-            # Override visual descriptions with ref-extracted ones (bulletproof —
-            # the LLM may have ignored the VERBATIM instruction and padded them).
-            # ref_descriptions is keyed by ref labels (e.g. "women1") but
-            # characters are named by the LLM (e.g. "Woman1"). Use matched_refs
-            # (char_name → file_path) + character_refs (ref_label → file_path)
-            # to bridge the gap.
-            if ref_descriptions and matched_refs:
-                # Build reverse map: file_path → ref_label
-                path_to_label = {path: label for label, path in character_refs.items()}
-                for char in plan.characters:
-                    if char.name not in matched_refs:
-                        continue
-                    # matched_refs[char.name] is the file path for this character
-                    ref_label = path_to_label.get(matched_refs[char.name])
-                    if ref_label and ref_label in ref_descriptions:
-                        old_len = len(char.visual_description)
-                        char.visual_description = ref_descriptions[ref_label]
-                        logger.info(
-                            "Overrode visual_description for %r (via ref label %r): "
-                            "%d chars → %d chars (from ref photo)",
-                            char.name,
-                            ref_label,
-                            old_len,
-                            len(char.visual_description),
-                        )
+        # Match uploaded reference names to plan character names
+        matched_refs = _match_character_refs(
+            character_refs, plan.characters, dry_run=config.dry_run
+        )
+        if matched_refs:
+            print(f"  Ref images matched: {list(matched_refs.keys())}")
 
         # ═══ STYLE OVERRIDE ═══
         plan.style = config.effective_style(plan.style)

@@ -10,7 +10,6 @@ from grok_spicy.prompts import (
     describe_ref_user_prompt,
     extended_retry_prompt,
     fix_prompt_from_issues,
-    ideation_user_message,
     keyframe_compose_prompt,
     keyframe_vision_prompt,
     video_fix_prompt,
@@ -267,25 +266,6 @@ def test_append_negative_prompt_none():
 def test_append_negative_prompt_empty():
     result = append_negative_prompt("generate a scene", "")
     assert result == "generate a scene"
-
-
-# ─── Ideation ──────────────────────────────────────────────
-
-
-def test_ideation_user_message_basic():
-    result = ideation_user_message("A fox adventure")
-    assert "Create a visual story plan for: A fox adventure" in result
-    assert "reference photos" not in result
-
-
-def test_ideation_user_message_with_refs():
-    result = ideation_user_message(
-        "A fox adventure",
-        ref_descriptions={"Fox": "orange fur, bushy tail"},
-    )
-    assert "A fox adventure" in result
-    assert "Fox: orange fur, bushy tail" in result
-    assert "verbatim" in result
 
 
 # ─── Describe ref ──────────────────────────────────────────

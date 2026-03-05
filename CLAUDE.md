@@ -2,7 +2,7 @@
 
 ## What This Is
 
-An automated video production pipeline that turns a short text concept into a multi-scene video with consistent characters. Powered entirely by xAI's Grok API family (image gen, video gen, vision, structured outputs) and orchestrated with Prefect. Includes an optional live web dashboard for watching runs in real time.
+An automated video production pipeline that turns a fully explicit `video.json` config into a multi-scene video with consistent characters. All story content (characters, scenes, prompts) is defined verbatim in the config — no LLM ideation or rewriting. Powered entirely by xAI's Grok API family (image gen, video gen, vision) and orchestrated with Prefect. Includes an optional live web dashboard for watching runs in real time.
 
 ## Tech Stack
 
@@ -17,15 +17,169 @@ An automated video production pipeline that turns a short text concept into a mu
 
 ## Architecture
 
-Seven-step pipeline (six core + one pre-ideation), each step a Prefect task, with an observer pattern for live updates:
+Five-step pipeline (Steps 2-6), each step a Prefect task, with an observer pattern for live updates. **There is no LLM ideation step** — the story plan comes directly from `video.json`.
 
-0. **Reference Description** (optional) — `grok-4-1-fast-reasoning` vision extracts visual descriptions from uploaded reference photos → `CharacterDescription`
-1. **Ideation** — `grok-4-1-fast-non-reasoning` + `chat.parse(StoryPlan)` → structured story plan (uses `SPICY_SYSTEM_PROMPT` when spicy mode is active)
-2. **Character Sheets** — `grok-imagine-image` text→image OR stylize from reference photo + `grok-4-1-fast-reasoning` vision verify loop
-3. **Keyframe Composition** — `grok-imagine-image` multi-image edit (max 3 refs) + vision consistency
-4. **Script Compilation** — pure Python, generates `script.md` + `state.json`
-5. **Video Generation** — `grok-imagine-video` image→video + drift correction via video edit (tier-aware: ≤8s correction-eligible, 9-15s extended)
-6. **Assembly** — FFmpeg normalize + concatenate → `final_video.mp4`
+1. **Character Sheets** (Step 2) — `grok-imagine-image` text->image OR stylize from reference photo + `grok-4-1-fast-reasoning` vision verify loop
+2. **Keyframe Composition** (Step 3) — `grok-imagine-image` multi-image edit (max 3 refs) + vision consistency
+3. **Script Compilation** (Step 4) — pure Python, generates `script.md` + `state.json`
+4. **Video Generation** (Step 5) — `grok-imagine-video` image->video + drift correction via video edit (tier-aware: <=8s correction-eligible, 9-15s extended)
+5. **Assembly** (Step 6) — FFmpeg normalize + concatenate -> `final_video.mp4`
+
+### Prompt Flow — How `video.json` Becomes API Calls
+
+Every prompt sent to the Grok API is constructed from fields you define verbatim in `video.json`. No LLM rewrites your text. The only mutations are additive (config prefixes/modifiers appended) or defensive (moderation reword if Grok blocks a prompt).
+
+```mermaid
+flowchart TD
+    subgraph INPUT["video.json (sole input)"]
+        SP["story_plan<br/>{title, style, color_palette,<br/>characters[], scenes[]}"]
+        SM["spicy_mode<br/>{global_prefix, enabled_modifiers}"]
+        NC["narrative_core<br/>{restraint_rule, escalation_arc,<br/>style_directive}"]
+        SC["characters[]<br/>{name, images[], spicy_traits[]}"]
+        DV["default_video<br/>{scene, motion, audio_cues}"]
+    end
+
+    SP -->|"plan.style (verbatim)"| STYLE_LOCK
+    SP -->|"character.visual_description (verbatim)"| CHAR_DESC
+
+    STYLE_LOCK["STYLE LOCK<br/>plan.style is prepended verbatim<br/>to every image/video prompt"]
+    CHAR_DESC["VISUAL DESC<br/>character.visual_description is<br/>used verbatim in all character prompts"]
+
+    subgraph STEP2["STEP 2: Character Sheets (per character)"]
+        direction TB
+        S2_P["PROMPT ASSEMBLY:<br/>'{style}. Full body character portrait of<br/>{visual_description}[, {spicy_traits}]'<br/>+ global_prefix + style_directive + modifiers"]
+        S2_API["grok-imagine-image"]
+        S2_MOD{"blocked?"}
+        S2_REWORD["reword_prompt()<br/>LLM rewrites to pass moderation<br/>--- ONLY MUTATION POINT ---"]
+        S2_VIS["VISION CHECK:<br/>'Score how well portrait matches...<br/>Description: {visual_description}<br/>[+ spicy_traits checklist]'"]
+        S2_VAPI["grok-4-1-fast-reasoning<br/>parse(ConsistencyScore)"]
+        S2_OK{"score >= threshold?"}
+        S2_RETRY["Retry with same prompt<br/>(up to max_char_attempts)"]
+
+        S2_P --> S2_API --> S2_MOD
+        S2_MOD -->|yes| S2_REWORD --> S2_API
+        S2_MOD -->|no| S2_VIS --> S2_VAPI --> S2_OK
+        S2_OK -->|no| S2_RETRY --> S2_API
+        S2_OK -->|yes| S2_OUT
+    end
+
+    STYLE_LOCK --> S2_P
+    CHAR_DESC --> S2_P
+    SC -->|"spicy_traits (verbatim)"| S2_P
+    SM -->|"global_prefix (prepended)"| S2_P
+    NC -->|"style_directive (appended)"| S2_P
+    SM -->|"enabled_modifiers (appended)"| S2_P
+
+    S2_OUT["CharacterAsset<br/>{portrait_url, portrait_path}"]
+
+    subgraph STEP3["STEP 3: Keyframes (per scene, sequential)"]
+        direction TB
+        S3_P["COMPOSE PROMPT ASSEMBLY:<br/>'{style}. Scene: {title} - {prompt_summary}<br/>Setting: {setting}. {mood}.<br/>{char_name} positioned on {side}.<br/>Action: {action}. Camera: {camera}.<br/>Color palette: {color_palette}.'<br/>+ global_prefix + INVIOLABLE RULES + modifiers"]
+
+        S3_VP["VIDEO PROMPT ASSEMBLY:<br/><= 8s: '{prompt_summary} {camera}. {action}. {mood}. {style}.'<br/>> 8s: '{style}. Phase 1: {action_part1}. Phase 2: {action_part2}.<br/>{camera}. {mood}.'<br/>+ global_prefix + style_directive + INVIOLABLE RULES + modifiers<br/>+ negative_prompt"]
+
+        S3_API["grok-imagine-image<br/>(image_urls = [char1_portrait,<br/>char2_portrait, prev_frame?])"]
+        S3_MOD{"blocked?"}
+        S3_REWORD["reword_prompt()"]
+        S3_VIS["VISION CHECK:<br/>'Score character match vs refs.<br/>Scene Description: {action}'<br/>+ INVIOLABLE RULES"]
+        S3_VAPI["grok-4-1-fast-reasoning<br/>parse(ConsistencyScore)"]
+        S3_OK{"score >= threshold?"}
+        S3_FIX["FIX PROMPT:<br/>vision's fix_prompt<br/>OR 'Fix ONLY: {issues}'"]
+
+        S3_P --> S3_API --> S3_MOD
+        S3_MOD -->|yes| S3_REWORD --> S3_API
+        S3_MOD -->|no| S3_VIS --> S3_VAPI --> S3_OK
+        S3_OK -->|"no, iter < max"| S3_FIX --> S3_API
+        S3_OK -->|yes| S3_OUT
+    end
+
+    STYLE_LOCK --> S3_P
+    STYLE_LOCK --> S3_VP
+    SP -->|"scene.prompt_summary (verbatim)"| S3_P
+    SP -->|"scene.setting, mood, action,<br/>camera, title (all verbatim)"| S3_P
+    SP -->|"scene.prompt_summary, action,<br/>camera, mood (all verbatim)"| S3_VP
+    SM -->|"global_prefix"| S3_P
+    NC -->|"INVIOLABLE RULES"| S3_P
+    SM -->|"modifiers"| S3_P
+    S2_OUT -->|"portrait_url"| S3_API
+
+    S3_OUT["KeyframeAsset<br/>{keyframe_url, video_prompt}"]
+
+    subgraph STEP5["STEP 5: Video Generation (per scene, sequential)"]
+        direction TB
+        S5_API["grok-imagine-video<br/>(prompt=video_prompt,<br/>image_url=keyframe_url,<br/>duration, resolution)"]
+        S5_MOD{"blocked?"}
+        S5_REWORD["reword_prompt()"]
+        S5_FRAME["Extract last frame (FFmpeg)"]
+        S5_VIS["VISION CHECK:<br/>'Has character drifted?<br/>Scene Description: {action}'<br/>+ INVIOLABLE RULES"]
+        S5_VAPI["grok-4-1-fast-reasoning<br/>parse(ConsistencyScore)"]
+        S5_TIER{"<= 8s?"}
+        S5_OK{"score >= threshold?"}
+        S5_CORR["CORRECTION:<br/>video_fix_prompt(issues)<br/>video.generate(fix, video_url)"]
+        S5_EXT{"score < 0.50?"}
+        S5_RETRY["EXTENDED RETRY:<br/>'{original_prompt} Fix: {issues}'<br/>+ negative_prompt<br/>Full regeneration from keyframe"]
+
+        S5_API --> S5_MOD
+        S5_MOD -->|yes| S5_REWORD --> S5_API
+        S5_MOD -->|no| S5_FRAME --> S5_VIS --> S5_VAPI
+        S5_VAPI --> S5_TIER
+        S5_TIER -->|"yes (<=8s)"| S5_OK
+        S5_OK -->|"no, corr < max"| S5_CORR --> S5_FRAME
+        S5_OK -->|yes| S5_OUT
+        S5_TIER -->|"no (9-15s)"| S5_EXT
+        S5_EXT -->|yes| S5_RETRY --> S5_FRAME
+        S5_EXT -->|no| S5_OUT
+    end
+
+    S3_OUT -->|"video_prompt (verbatim)"| S5_API
+    S3_OUT -->|"keyframe_url"| S5_API
+    S2_OUT -->|"portrait_url (for vision)"| S5_VIS
+
+    S5_OUT["VideoAsset<br/>{video_url, video_path}"]
+
+    subgraph STEP6["STEP 6: Assembly"]
+        S6["FFmpeg normalize + concatenate<br/>-> final_video.mp4"]
+    end
+
+    S5_OUT --> S6
+
+    classDef verbatim fill:#51cf66,stroke:#333,color:#000
+    classDef additive fill:#ffa94d,stroke:#333,color:#000
+    classDef mutation fill:#ff6b6b,stroke:#333,color:#fff
+    classDef api fill:#339af0,stroke:#333,color:#fff
+
+    class STYLE_LOCK,CHAR_DESC verbatim
+    class S2_REWORD,S3_REWORD,S5_REWORD mutation
+    class S2_API,S2_VAPI,S3_API,S3_VAPI,S5_API,S5_VAPI api
+```
+
+**Legend:**
+- **Green** = your text used verbatim (no changes)
+- **Orange** = additive only (your text + config prefix/modifiers appended)
+- **Red** = mutation point (only if Grok moderation blocks a prompt)
+- **Blue** = API call to Grok
+
+### Where Your Prompt Text Is Preserved vs Changed
+
+| video.json field | Used in | Preserved? |
+|---|---|---|
+| `story_plan.style` | Prepended to every image/video prompt | Verbatim |
+| `story_plan.color_palette` | Keyframe compose prompt | Verbatim |
+| `character.visual_description` | Character sheet + vision checks | Verbatim |
+| `scene.prompt_summary` | Keyframe compose + video prompt | Verbatim |
+| `scene.action` | Keyframe compose + video prompt + vision checks | Verbatim |
+| `scene.camera` | Keyframe compose + video prompt | Verbatim |
+| `scene.mood` | Keyframe compose + video prompt | Verbatim |
+| `scene.setting` | Keyframe compose prompt | Verbatim |
+| `scene.title` | Keyframe compose prompt | Verbatim |
+| `spicy_mode.global_prefix` | Prepended to all prompts when enabled | Additive (prepended) |
+| `spicy_mode.enabled_modifiers` | Appended to all prompts | Additive (appended) |
+| `narrative_core.restraint_rule` | Appended as INVIOLABLE RULE | Additive (appended) |
+| `narrative_core.escalation_arc` | Appended as INVIOLABLE RULE | Additive (appended) |
+| `narrative_core.style_directive` | Appended to character + video prompts | Additive (appended) |
+| `character.spicy_traits` | Appended to character desc (local copy only) | Additive (appended) |
+| *moderation reword* | Entire prompt rewritten by LLM | **Destructive** (only if blocked) |
+| *vision fix prompt* | New prompt generated from issues list | **Generated** (fix loop only) |
 
 ### Observer Pattern
 
@@ -40,27 +194,24 @@ Observer calls are fire-and-forget — errors are caught and logged, never crash
 - **`web.py`** — FastAPI app with routes for HTML pages, JSON API, SSE stream, static files
 - **`templates/`** — Jinja2 + htmx + SSE for live-reloading, dark theme, zero npm
 - **`db.py`** — 7-table SQLite schema (runs, characters, scenes, reference_images, character_assets, keyframe_assets, video_assets)
-- **`events.py`** — Thread-safe `EventBus` bridging sync pipeline → async SSE via `asyncio.Queue`
+- **`events.py`** — Thread-safe `EventBus` bridging sync pipeline -> async SSE via `asyncio.Queue`
 
-### Reference Image Upload
+### Reference Images
 
-Users can provide photos of real people or character art before a run:
-- **Dashboard**: `/new` form with concept + 2 image upload slots
-- **CLI**: `--ref "Alex=photos/alex.jpg"` (repeatable)
-- Names are injected as hints into the ideation prompt
-- If exact match fails, LLM fallback maps labels → character names via `chat.parse(CharacterRefMapping)`
+Character reference photos are defined in `video.json` under `characters[].images`:
+- Local paths are resolved relative to project root
+- URLs are downloaded to a staging directory before the run
+- Matched to `story_plan.characters` by name
 - `generate_character_sheet` uses `image_url` (single-image edit/stylize) when reference is provided
-- Characters without references generate from scratch as before
+- Characters without references generate from scratch
 
 ## Key Constraints
 
 - Multi-image edit accepts **max 3 images** — limit 2 characters per scene, reserve slot 3 for frame chaining
-- Video edit input max **8.7 seconds** — keep scenes ≤ 8s for correction eligibility
+- Video edit input max **8.7 seconds** — keep scenes <= 8s for correction eligibility
 - Video/image URLs are **temporary** — download immediately after generation
-- Structured output (`chat.parse()`) requires **Grok 4 family** models only
 - OpenAI SDK `images.edit()` does NOT work — must use xAI SDK or direct HTTP with JSON body
 - **Scene duration tiers**: 3-8s = correction-eligible (drift fix loop), 9-15s = extended (no corrections, only extended-retry if score < 0.50)
-- **Scene count**: 3-6 total (ideally 4-5), each 6-10s with one primary action
 - **Characters per scene**: 1-3 (max 4) to avoid visual clutter
 - **Moderation auto-reword**: max 2 attempts to rewrite blocked prompts while preserving scene/character/camera/style
 - **Extended retry threshold**: 0.50 — extended-tier scenes below this score are regenerated from scratch
@@ -71,18 +222,17 @@ Users can provide photos of real people or character art before a run:
 grok-spicy/
 ├── CLAUDE.md
 ├── pyproject.toml
-├── video.json                   # Spicy mode config (default, edit this)
-├── examples/                    # Example video.json configs (low/medium/high/extreme/solo/scene-only)
+├── video.json                   # THE sole pipeline input (edit this)
+├── examples/                    # Example video.json configs
 ├── src/
 │   └── grok_spicy/
 │       ├── __init__.py
-│       ├── __main__.py          # CLI entry point (--serve, --web, --ref, --spicy, --config, --dry-run)
+│       ├── __main__.py          # CLI entry point (--config, --serve, --web, --dry-run)
 │       ├── schemas.py           # Pydantic models (StoryPlan, VideoConfig, SpicyMode, etc.)
 │       ├── client.py            # xAI SDK wrapper + helpers
 │       ├── config.py            # video.json loader with caching + graceful fallback
-│       ├── dry_run.py            # Dry-run helpers (write prompts to markdown files)
+│       ├── dry_run.py           # Dry-run helpers (write prompts to markdown files)
 │       ├── prompts.py           # Pure prompt builder functions (all pipeline prompts)
-│       ├── prompt_builder.py    # Spicy prompt composer (0/1/2+ character logic)
 │       ├── pipeline.py          # Prefect flow wiring + observer hooks
 │       ├── db.py                # SQLite schema + CRUD functions
 │       ├── events.py            # Thread-safe EventBus (sync→async bridge)
@@ -95,8 +245,8 @@ grok-spicy/
 │       │   └── run.html         # Live-updating run detail (SSE)
 │       └── tasks/
 │           ├── __init__.py
-│           ├── describe_ref.py  # Step 0: extract visual description from reference photos
-│           ├── ideation.py      # Step 1: plan_story (+ SPICY_SYSTEM_PROMPT)
+│           ├── ideation.py      # (UNUSED — kept for reference, not imported)
+│           ├── describe_ref.py  # (UNUSED — was Step 0 for ref photo analysis)
 │           ├── characters.py    # Step 2: generate_character_sheet (+ stylize mode)
 │           ├── keyframes.py     # Step 3: compose_keyframe
 │           ├── script.py        # Step 4: compile_script
@@ -107,7 +257,7 @@ grok-spicy/
 ├── output/                      # Generated assets (gitignored)
 │   ├── grok_spicy.db            # Shared SQLite database
 │   ├── staging/                 # Temporary pre-run-id files
-│   │   └── references/          # CLI --ref and spicy config image downloads
+│   │   └── references/          # Config image downloads
 │   └── runs/
 │       └── {run_id}/            # Per-run directory (DB id or timestamp)
 │           ├── state.json
@@ -123,51 +273,103 @@ grok-spicy/
 └── tests/
 ```
 
+## video.json Schema
+
+`video.json` is the **sole input** to the pipeline. It contains everything: the story plan, characters, scenes, spicy modifiers, and narrative constraints.
+
+```json
+{
+  "version": "1.0",
+  "spicy_mode": {
+    "enabled": true,
+    "intensity": "extreme",
+    "global_prefix": "Prefix prepended to every prompt: ",
+    "enabled_modifiers": ["modifier appended to prompts"],
+    "extreme_emphasis": "(optional emphasis text)"
+  },
+  "characters": [
+    {
+      "id": "char1",
+      "name": "CharacterName",
+      "description": "Config-level description",
+      "images": ["source_images/photo.jpg"],
+      "spicy_traits": ["trait merged into character prompts"]
+    }
+  ],
+  "default_video": {
+    "scene": "Default scene/setting description",
+    "motion": "Default motion description",
+    "audio_cues": "Default audio description"
+  },
+  "narrative_core": {
+    "restraint_rule": "Appended as INVIOLABLE RULE to prompts",
+    "escalation_arc": "Appended as INVIOLABLE RULE to prompts",
+    "style_directive": "Appended to character + video prompts"
+  },
+  "story_plan": {
+    "title": "Story Title",
+    "style": "Visual style prepended to every prompt",
+    "aspect_ratio": "16:9",
+    "color_palette": "Color description for keyframes",
+    "characters": [
+      {
+        "name": "CharacterName",
+        "role": "protagonist",
+        "visual_description": "Exhaustive visual description used VERBATIM in every prompt",
+        "personality_cues": ["adjective1", "adjective2"]
+      }
+    ],
+    "scenes": [
+      {
+        "scene_id": 1,
+        "title": "Scene Title",
+        "description": "Narrative description (for script.md)",
+        "characters_present": ["CharacterName"],
+        "setting": "Physical environment (verbatim in keyframe prompt)",
+        "camera": "Shot type + movement (verbatim in keyframe + video prompt)",
+        "mood": "Lighting/atmosphere (verbatim in keyframe + video prompt)",
+        "action": "Primary motion (verbatim in keyframe + video + vision prompts)",
+        "prompt_summary": "Concise action sentence (verbatim in keyframe + video prompt)",
+        "duration_seconds": 8,
+        "transition": "cut"
+      }
+    ]
+  }
+}
+```
+
+**Key rule:** `story_plan.characters[].name` must match `characters[].name` for spicy_traits and reference images to be merged correctly.
+
 ## Conventions
 
 - All inter-step data passes through Pydantic models defined in `schemas.py`
 - Every image/video prompt starts with `plan.style` (the "style lock")
-- Character `visual_description` is frozen from Step 1 — never paraphrased, used verbatim everywhere
+- Character `visual_description` is defined in `video.json` — used verbatim everywhere, never paraphrased
 - Video prompts describe **motion only**, not appearance (the keyframe image carries visual truth)
 - Download every generated asset immediately — URLs expire
 - Vision-in-the-loop: every generation is checked against character reference sheets
 - Observer calls are fire-and-forget — wrapped in try/except, never crash the pipeline
 - Web dependencies (FastAPI, uvicorn, Jinja2) are optional — only imported when `--serve` or `--web` is used
 - All prompt construction lives in `prompts.py` as pure functions — one per prompt type
-- Spicy mode is entirely config-driven via `video.json` — no code changes needed for new characters/traits
-- Reference descriptions from photos override LLM-generated `visual_description` (injected verbatim)
-- Character `spicy_traits` from `VideoConfig` are merged into plan characters by name match after ideation
-
-## Spicy Mode
-
-Config-driven adult content pipeline controlled via `video.json` (no code changes needed):
-
-- **Activation**: `--spicy` CLI flag loads `video.json` (or `--config path.json`)
-- **Config schema**: `VideoConfig` → `SpicyMode` + `SpicyCharacter[]` + `DefaultVideo`
-- **Intensity levels**: `low` (1 modifier), `medium` (2), `high` (all), `extreme` (all + emphasis)
-- **Integration points**: ideation system prompt swaps to `SPICY_SYSTEM_PROMPT`, prompts get `global_prefix` + `enabled_modifiers`, characters get `spicy_traits` merged by name match
-- **Prompt builder** (`prompt_builder.py`): adapts output based on character count (0 = scene-only, 1 = solo focus, 2+ = interaction)
-- **Graceful fallback**: missing/invalid `video.json` logs warning and uses empty defaults (no crash)
-- **Example configs** in `examples/` directory (7 presets from low to extreme)
+- Pipeline is entirely config-driven via `video.json` — no code changes needed for new content
+- Character `spicy_traits` from `characters[]` are merged into plan characters by name match at pipeline start
 
 ## Dry-Run Mode
 
 Preview all prompts without making API calls or spending money:
 
 - **Activation**: `--dry-run` CLI flag (no API key or FFmpeg required)
-- **Behavior**: all prompt construction runs normally, but API calls are replaced with mock returns; every prompt is written to a structured markdown file under `output/dry_run/`
-- **Output structure**: `output/dry_run/{step}/{label}.md` + `output/dry_run/summary.md`
-- **Mock data**: flows downstream so all steps execute — `StoryPlan` gets 2 characters + 3 scenes with `[DRY-RUN]` prefixed fields, assets get `dry-run://placeholder` URLs and score=1.0
+- **Behavior**: all prompt construction runs normally, but API calls are replaced with mock returns; every prompt is written to a structured markdown file under `output/runs/<id>/prompts/`
+- **Mock data**: flows downstream so all steps execute — assets get `dry-run://placeholder` URLs and score=1.0
 - **Steps skipped**: Step 6 (assembly) is skipped entirely; Step 4 (script) runs unchanged with placeholder paths
-- **LLM ref matching**: skips the LLM fallback phase (exact matches still work)
 - **Config field**: `PipelineConfig.dry_run: bool = False`
 
 ## LLM Models
 
 | Model | Constant | Purpose |
 |---|---|---|
-| `grok-4-1-fast-non-reasoning` | `MODEL_STRUCTURED` | Structured output (StoryPlan, CharacterRefMapping) |
-| `grok-4-1-fast-reasoning` | `MODEL_REASONING` | Vision checks, reference photo description |
+| `grok-4-1-fast-non-reasoning` | `MODEL_STRUCTURED` | Moderation reword, ref matching fallback |
+| `grok-4-1-fast-reasoning` | `MODEL_REASONING` | Vision consistency checks |
 | `grok-imagine-image` | `MODEL_IMAGE` | Image generation + editing + stylization |
 | `grok-imagine-video` | `MODEL_VIDEO` | Video generation + drift correction |
 
@@ -186,40 +388,26 @@ pip install -e .
 # Install with web dashboard
 pip install -e ".[web]"
 
-# Run pipeline (CLI only)
-python -m grok_spicy "A curious fox meets a wise owl in an enchanted forest"
+# Run pipeline (reads ./video.json by default)
+python -m grok_spicy
+
+# Run pipeline with alternate config
+python -m grok_spicy --config path/to/video.json
 
 # Run pipeline with live dashboard
-python -m grok_spicy "A fox and owl adventure" --serve
-
-# Run pipeline with character reference images
-python -m grok_spicy "A spy thriller" --ref "Alex=photos/alex.jpg" --ref "Maya=photos/maya.jpg"
-
-# Run pipeline with spicy mode
-python -m grok_spicy "A romantic encounter" --spicy
-python -m grok_spicy "A romantic encounter" --spicy --config examples/video-extreme.json
+python -m grok_spicy --serve
 
 # Dry run — preview all prompts without API calls (no key needed)
-python -m grok_spicy "A fox and owl adventure" --dry-run
-python -m grok_spicy "A romance" --dry-run --spicy --ref "Alex=photo.jpg"
-
-# Run from a prompt file (single concept, preserves blank lines/structure)
-python -m grok_spicy --prompt-file my_prompts.txt
-
-# Run from a prompt file with multiple concepts (separated by --- lines)
-python -m grok_spicy --prompt-file multi_prompts.txt
-
-# Pre-built StoryPlan JSON (skips ideation)
-python -m grok_spicy --script output/state.json
+python -m grok_spicy --dry-run
 
 # Tune generation
-python -m grok_spicy "concept" --max-duration 8 --consistency-threshold 0.85 --negative-prompt "blurry"
+python -m grok_spicy --max-duration 8 --consistency-threshold 0.85 --negative-prompt "blurry"
 
 # Dashboard only (browse past runs, launch new ones from web)
 python -m grok_spicy --web
 
-# Or via Prefect
-prefect deployment run grok-video-pipeline/default --param concept="..."
+# Debug mode (1 scene only)
+python -m grok_spicy --debug
 ```
 
 ## Linting & Formatting

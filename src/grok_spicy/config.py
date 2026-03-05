@@ -93,7 +93,11 @@ def clear_cache() -> None:
 
 
 def _default_config() -> VideoConfig:
-    """Minimal built-in default when no video.json is available."""
+    """Minimal built-in default when no video.json is available.
+
+    Note: story_plan will be None, so the pipeline will refuse to run
+    until the user provides a proper video.json with a story_plan section.
+    """
     from grok_spicy.schemas import DefaultVideo, SpicyMode
 
     return VideoConfig(
