@@ -651,7 +651,7 @@ tests/
 ├── test_video_config.py      # 23 tests — VideoConfig schema, loader, caching, prompt builder
 ├── test_prompts.py           # 22 tests — All prompt builder functions
 ├── test_script.py            # Script compilation (markdown storyboard generation)
-├── test_cli.py               # 9 tests — --ref parsing, --prompt-file, error handling
+├── test_cli.py               # 4 tests — config-only pipeline, missing story_plan, dry-run, defaults
 ├── test_web.py               # 22 tests — HTTP routes, JSON API, uploads, health, static
 └── test_web_live.py          # 5 tests — Real uvicorn server (marked @pytest.mark.live)
 ```
@@ -672,7 +672,7 @@ API call, decision, and score is captured.
 Console output defaults to INFO level. Use `-v` for full DEBUG output:
 
 ```bash
-python -m grok_spicy "concept" --serve -v
+python -m grok_spicy --serve -v
 ```
 
 All LLM prompts (character generation, keyframe composition, video generation,
