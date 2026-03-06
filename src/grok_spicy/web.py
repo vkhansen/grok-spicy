@@ -227,6 +227,16 @@ def _render_sse_html(event: Event) -> str:
             f"<p>Score: {score_pct}%</p>"
             f"</div>"
         )
+    if event.type == "video_start":
+        scene_id = d.get("scene_id", "")
+        duration = d.get("duration", "")
+        tier = d.get("tier", "")
+        return (
+            f'<div class="card generating" id="video-pending-{scene_id}">'
+            f"<h3>Scene {scene_id}</h3>"
+            f"<p>Generating {duration}s video ({tier})...</p>"
+            f"</div>"
+        )
     if event.type == "video":
         score_pct = int(d.get("consistency_score", 0) * 100)
         path = d.get("video_path", "")
@@ -237,9 +247,46 @@ def _render_sse_html(event: Event) -> str:
             f"<h3>Scene {scene_id}</h3>"
             f"<p>Score: {score_pct}%</p>"
             f"</div>"
+            f'<div id="video-pending-{scene_id}" hx-swap-oob="delete"></div>'
         )
-    # For non-swappable events (complete, error, plan, etc.), send JSON
+    if event.type == "complete":
+        final_path = d.get("final_video_path", "")
+        return (
+            f'<h2>Final Video</h2>'
+            f'<video src="/{final_path}" controls autoplay loop'
+            f' style="max-width: 720px; margin-top: 0.5rem;"></video>'
+        )
+    # For non-swappable events (error, plan, etc.), send JSON
     return json.dumps(d)
+
+
+def _render_index_event(event: Event) -> str | None:
+    """Render an SSE event as HTML for the index page live updates."""
+    d = event.data
+    run_id = event.run_id
+    if event.type == "run_start":
+        concept = d.get("concept", "Untitled")
+        title = concept[:50]
+        return (
+            f'<a href="/run/{run_id}" class="card" id="run-{run_id}"'
+            f' style="text-decoration: none; color: inherit;">'
+            f"<h3>{title}</h3>"
+            f'<span class="status status-running" id="run-{run_id}-status">'
+            f"running</span>"
+            f'<p style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.7;">'
+            f"just now</p></a>"
+        )
+    if event.type == "complete":
+        return (
+            f'<span class="status status-complete" id="run-{run_id}-status"'
+            f' hx-swap-oob="true">complete</span>'
+        )
+    if event.type == "error":
+        return (
+            f'<span class="status status-failed" id="run-{run_id}-status"'
+            f' hx-swap-oob="true">failed</span>'
+        )
+    return None
 
 
 @app.get("/sse/{run_id}")
@@ -262,6 +309,31 @@ async def sse_stream(run_id: int):
                             event.type,
                         )
                         break
+        finally:
+            event_bus.unsubscribe(queue)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/sse/all")
+async def sse_stream_all():
+    """Global SSE stream for the index page — never auto-closes."""
+    logger.info("SSE global stream opened")
+    queue = event_bus.subscribe()
+
+    async def generate():
+        try:
+            while True:
+                event = await queue.get()
+                html = _render_index_event(event)
+                if html is not None:
+                    yield f"event: {event.type}\ndata: {html}\n\n"
+        except Exception:
+            logger.debug("SSE global stream disconnected")
         finally:
             event_bus.unsubscribe(queue)
 

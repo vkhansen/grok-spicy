@@ -43,25 +43,29 @@
         </div>
         {% endfor %}
     </div>
+    <!-- video_start placeholders append into the videos grid -->
+    <div sse-swap="video_start" hx-target="#videos" hx-swap="beforeend"></div>
 
     {% if run.final_video_path %}
-    <h2>Final Video</h2>
-    <video src="/{{ run.final_video_path }}" controls autoplay loop
-           style="max-width: 720px; margin-top: 0.5rem;"></video>
+    <div id="final-video">
+        <h2>Final Video</h2>
+        <video src="/{{ run.final_video_path }}" controls autoplay loop
+               style="max-width: 720px; margin-top: 0.5rem;"></video>
+    </div>
+    {% else %}
+    <div id="final-video" sse-swap="complete" hx-swap="innerHTML"></div>
     {% endif %}
 
-    <!-- Status update on complete/error -->
-    <div sse-swap="complete" hx-swap="none"></div>
+    <!-- Status update on error -->
     <div sse-swap="error" hx-swap="none"></div>
 
 </div>
 
 <script>
-// Update status badge and reload content on complete/error
+// Update status badge on complete/error — no page reload
 document.body.addEventListener("sse:complete", function() {
     document.getElementById("run-status").className = "status status-complete";
     document.getElementById("run-status").textContent = "complete";
-    setTimeout(function() { location.reload(); }, 1000);
 });
 document.body.addEventListener("sse:error", function() {
     document.getElementById("run-status").className = "status status-failed";

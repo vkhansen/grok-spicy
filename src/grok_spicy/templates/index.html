@@ -2,19 +2,30 @@
 {% block title %}Grok Spicy — Runs{% endblock %}
 {% block content %}
 <h1>Pipeline Runs</h1>
-{% if runs %}
-<div class="grid">
-    {% for run in runs %}
-    <a href="/run/{{ run.id }}" class="card" style="text-decoration: none; color: inherit;">
-        <h3>{{ run.title or run.concept[:50] }}</h3>
-        <span class="status status-{{ 'complete' if run.status == 'complete' else 'running' if run.status not in ('failed', 'complete', 'pending') else run.status }}">
-            {{ run.status }}
-        </span>
-        <p style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.7;">{{ run.started_at[:19] }}</p>
-    </a>
-    {% endfor %}
+<div hx-ext="sse" sse-connect="/sse/all">
+    <div class="grid" id="run-grid" sse-swap="run_start" hx-swap="afterbegin">
+        {% for run in runs %}
+        <a href="/run/{{ run.id }}" class="card" id="run-{{ run.id }}" style="text-decoration: none; color: inherit;">
+            <h3>{{ run.title or run.concept[:50] }}</h3>
+            <span class="status status-{{ 'complete' if run.status == 'complete' else 'running' if run.status not in ('failed', 'complete', 'pending') else run.status }}" id="run-{{ run.id }}-status">
+                {{ run.status }}
+            </span>
+            <p style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.7;">{{ run.started_at[:19] }}</p>
+        </a>
+        {% endfor %}
+    </div>
+    {% if not runs %}
+    <p id="empty-state" style="margin-top: 1rem; opacity: 0.7;">No runs yet. <a href="/new">Start one.</a></p>
+    {% endif %}
+    <!-- Hidden listeners for OOB status badge updates -->
+    <div sse-swap="complete" hx-swap="none"></div>
+    <div sse-swap="error" hx-swap="none"></div>
 </div>
-{% else %}
-<p style="margin-top: 1rem; opacity: 0.7;">No runs yet. <a href="/new">Start one.</a></p>
-{% endif %}
+<script>
+// Remove empty state when a run card arrives
+document.body.addEventListener("sse:run_start", function() {
+    var el = document.getElementById("empty-state");
+    if (el) el.remove();
+});
+</script>
 {% endblock %}
