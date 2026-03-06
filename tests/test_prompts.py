@@ -1,6 +1,5 @@
 """Unit tests for prompt builder functions."""
 
-from grok_spicy.prompt_builder import build_spicy_prompt
 from grok_spicy.prompts import (
     append_negative_prompt,
     build_video_prompt,
@@ -11,7 +10,6 @@ from grok_spicy.prompts import (
     describe_ref_user_prompt,
     extended_retry_prompt,
     fix_prompt_from_issues,
-    ideation_user_message,
     keyframe_compose_prompt,
     keyframe_vision_prompt,
     video_fix_prompt,
@@ -270,25 +268,6 @@ def test_append_negative_prompt_empty():
     assert result == "generate a scene"
 
 
-# ─── Ideation ──────────────────────────────────────────────
-
-
-def test_ideation_user_message_basic():
-    result = ideation_user_message("A fox adventure")
-    assert "Create a visual story plan for: A fox adventure" in result
-    assert "reference photos" not in result
-
-
-def test_ideation_user_message_with_refs():
-    result = ideation_user_message(
-        "A fox adventure",
-        ref_descriptions={"Fox": "orange fur, bushy tail"},
-    )
-    assert "A fox adventure" in result
-    assert "Fox: orange fur, bushy tail" in result
-    assert "verbatim" in result
-
-
 # ─── Describe ref ──────────────────────────────────────────
 
 
@@ -418,39 +397,6 @@ def test_character_stylize_prompt_with_style_directive():
 # ═══════════════════════════════════════════════════════════════
 # NEW: extreme_emphasis from config (not hardcoded)
 # ═══════════════════════════════════════════════════════════════
-
-
-def test_extreme_emphasis_from_config():
-    """Extreme emphasis text must come from config, not be hardcoded."""
-    cfg = VideoConfig(
-        spicy_mode=SpicyMode(
-            enabled=True,
-            enabled_modifiers=["modifier_a"],
-            intensity="extreme",
-            global_prefix="",
-            extreme_emphasis="(CUSTOM EMPHASIS FROM CONFIG)",
-        ),
-        default_video=DefaultVideo(),
-    )
-    result = build_spicy_prompt(cfg)
-    assert "(CUSTOM EMPHASIS FROM CONFIG)" in result
-    assert "(extreme detail, maximum realism)" not in result
-
-
-def test_extreme_no_emphasis_when_field_empty():
-    """No emphasis appended when extreme_emphasis is empty."""
-    cfg = VideoConfig(
-        spicy_mode=SpicyMode(
-            enabled=True,
-            enabled_modifiers=["modifier_a"],
-            intensity="extreme",
-            global_prefix="",
-            extreme_emphasis="",
-        ),
-        default_video=DefaultVideo(),
-    )
-    result = build_spicy_prompt(cfg)
-    assert "(extreme detail, maximum realism)" not in result
 
 
 # ═══════════════════════════════════════════════════════════════

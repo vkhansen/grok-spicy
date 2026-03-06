@@ -116,13 +116,21 @@ _FILE_NONE = File(None)
 
 @app.post("/api/runs")
 async def create_run(
-    concept: str = Form(...),
     ref_name_1: str = Form(""),
     ref_image_1: UploadFile | None = _FILE_NONE,
     ref_name_2: str = Form(""),
     ref_image_2: UploadFile | None = _FILE_NONE,
 ):
-    logger.info("Create run: concept=%r", concept[:120])
+    from grok_spicy.config import load_video_config
+
+    video_config = load_video_config()
+    if video_config.story_plan is None:
+        return HTMLResponse(
+            "<h1>Error: video.json has no story_plan</h1>", status_code=400
+        )
+
+    concept = video_config.story_plan.title
+    logger.info("Create run from config: concept=%r", concept[:120])
     conn = get_db()
     run_id = insert_run(conn, concept)
 
@@ -149,13 +157,13 @@ async def create_run(
 
     # Start pipeline in background thread
     logger.info("Launching pipeline thread: run_id=%d, refs=%d", run_id, len(ref_map))
-    _start_pipeline_thread(concept, run_id, ref_map)
+    _start_pipeline_thread(video_config, run_id, ref_map)
 
     return RedirectResponse(f"/run/{run_id}", status_code=303)
 
 
 def _start_pipeline_thread(
-    concept: str,
+    video_config: Any,
     run_id: int,
     ref_map: dict[str, str],
 ) -> None:
@@ -163,11 +171,12 @@ def _start_pipeline_thread(
     from grok_spicy.observer import WebObserver
 
     observer = WebObserver(get_db(), event_bus)
+    concept = video_config.story_plan.title if video_config.story_plan else "Untitled"
 
     def _patched_run_start(concept: str) -> int:
         from grok_spicy.db import update_run
 
-        update_run(get_db(), run_id, status="ideation")
+        update_run(get_db(), run_id, status="characters")
         event_bus.publish(
             Event(type="run_start", run_id=run_id, data={"concept": concept})
         )
@@ -181,7 +190,9 @@ def _start_pipeline_thread(
 
         logger.info("Pipeline thread started for run_id=%d", run_id)
         character_refs = ref_map if ref_map else None
-        video_pipeline(concept, observer=observer, character_refs=character_refs)
+        video_pipeline(
+            video_config, observer=observer, character_refs=character_refs
+        )
         logger.info("Pipeline thread finished for run_id=%d", run_id)
 
     t = threading.Thread(target=_run, daemon=True)

@@ -13,16 +13,15 @@ from grok_spicy.schemas import (
     Character,
     PipelineConfig,
     PipelineState,
-    StoryPlan,
     VideoConfig,
 )
 from grok_spicy.tasks.assembly import assemble_final_video
 from grok_spicy.tasks.characters import generate_character_sheet
-from grok_spicy.tasks.describe_ref import describe_reference_image
-from grok_spicy.tasks.ideation import plan_story
 from grok_spicy.tasks.keyframes import compose_keyframe
 from grok_spicy.tasks.script import compile_script
 from grok_spicy.tasks.video import generate_scene_video
+
+# Note: tasks/ideation.py is no longer used — story plans come from video.json.
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +85,29 @@ def _match_character_refs(
     if not unmatched_refs:
         return matched
 
-    # Phase 2: LLM fallback matching
+    # Phase 2: substring matching (cheap heuristic before LLM)
+    unmatched_char_names = char_names - set(matched.keys())
+    still_unmatched: dict[str, str] = {}
+    for ref_label, ref_path in unmatched_refs.items():
+        found = False
+        for cname in unmatched_char_names:
+            if ref_label.lower() in cname.lower() or cname.lower() in ref_label.lower():
+                matched[cname] = ref_path
+                logger.info(
+                    "Ref match (substring): label=%r → character=%r",
+                    ref_label,
+                    cname,
+                )
+                found = True
+                break
+        if not found:
+            still_unmatched[ref_label] = ref_path
+
+    if not still_unmatched:
+        logger.info("All refs matched after substring phase")
+        return matched
+
+    # Phase 3: LLM fallback matching (with retry)
     unmatched_char_names = char_names - set(matched.keys())
     if not unmatched_char_names:
         logger.debug("All character names already matched, skipping LLM fallback")
@@ -97,40 +118,65 @@ def _match_character_refs(
         return matched
 
     logger.info(
-        "Phase 2: LLM fallback matching %d refs → %d characters",
-        len(unmatched_refs),
+        "Phase 3: LLM fallback matching %d refs → %d characters",
+        len(still_unmatched),
         len(unmatched_char_names),
     )
-    try:
-        from grok_spicy.client import MODEL_STRUCTURED, get_client
-        from grok_spicy.schemas import CharacterRefMapping
+    max_llm_attempts = 2
+    for attempt in range(1, max_llm_attempts + 1):
+        try:
+            from grok_spicy.client import MODEL_STRUCTURED, get_client
+            from grok_spicy.schemas import CharacterRefMapping
 
-        client = get_client()
-        char_info = [
-            {"name": c.name, "role": c.role}
-            for c in characters
-            if c.name in unmatched_char_names
-        ]
-        from xai_sdk.chat import user
+            client = get_client()
+            # Include visual_description snippets for better matching context
+            char_info = [
+                {
+                    "name": c.name,
+                    "role": c.role,
+                    "description_snippet": c.visual_description[:120],
+                }
+                for c in characters
+                if c.name in unmatched_char_names
+            ]
+            from xai_sdk.chat import user
 
-        ref_match_prompt = (
-            f"Map these uploaded reference image labels to story characters.\n"
-            f"Uploaded labels: {list(unmatched_refs.keys())}\n"
-            f"Characters: {char_info}\n"
-            f"Return a mapping from each label to the best-matching character name."
-        )
-        logger.info("LLM ref-matching prompt: %s", ref_match_prompt)
-        chat = client.chat.create(model=MODEL_STRUCTURED)
-        chat.append(user(ref_match_prompt))
-        _, result = chat.parse(CharacterRefMapping)
-        for label, char_name in result.mapping.items():
-            if label in unmatched_refs and char_name in unmatched_char_names:
-                matched[char_name] = unmatched_refs[label]
-                logger.info(
-                    "Ref match (LLM): label=%r → character=%r", label, char_name
-                )
-    except Exception:
-        logger.warning("LLM character ref matching failed", exc_info=True)
+            ref_match_prompt = (
+                f"Map these uploaded reference image labels to story characters.\n"
+                f"Uploaded labels: {list(still_unmatched.keys())}\n"
+                f"Characters: {char_info}\n"
+                f"Return a mapping from each label to the best-matching character name."
+            )
+            logger.info(
+                "LLM ref-matching prompt (attempt %d): %s", attempt, ref_match_prompt
+            )
+            chat = client.chat.create(model=MODEL_STRUCTURED)
+            chat.append(user(ref_match_prompt))
+            _, result = chat.parse(CharacterRefMapping)
+            for label, char_name in result.mapping.items():
+                if label in still_unmatched and char_name in unmatched_char_names:
+                    matched[char_name] = still_unmatched[label]
+                    logger.info(
+                        "Ref match (LLM): label=%r → character=%r", label, char_name
+                    )
+            break  # Success — exit retry loop
+        except Exception:
+            logger.warning(
+                "LLM character ref matching attempt %d/%d failed",
+                attempt,
+                max_llm_attempts,
+                exc_info=True,
+            )
+
+    # Warn about any refs that remain unmatched after all phases
+    final_matched_paths = set(matched.values())
+    for ref_label, ref_path in character_refs.items():
+        if ref_path not in final_matched_paths:
+            logger.warning(
+                "Reference image %r (%s) could not be matched to any character",
+                ref_label,
+                ref_path,
+            )
 
     logger.info("Final ref matching result: %d matched total", len(matched))
     return matched
@@ -143,77 +189,80 @@ def _match_character_refs(
     log_prints=True,
 )
 def video_pipeline(
-    concept: str,
+    video_config: VideoConfig,
     observer: PipelineObserver | None = None,
     character_refs: dict[str, str] | None = None,
     config: PipelineConfig | None = None,
-    script_plan: StoryPlan | None = None,
-    video_config: VideoConfig | None = None,
-    # Deprecated kwargs — kept for backward compat (web.py, tests)
-    debug: bool = False,
-    max_duration: int = 15,
 ) -> str:
     """End-to-end video generation pipeline.
 
-    Takes a concept string and produces a final assembled video.
+    All input comes from video_config (loaded from video.json).
+    The story_plan field defines characters and scenes explicitly —
+    no LLM ideation step.
     """
     if config is None:
-        config = PipelineConfig(debug=debug, max_duration=max_duration)
+        config = PipelineConfig()
     if observer is None:
         observer = NullObserver()
     if character_refs is None:
         character_refs = {}
 
-    logger.info("Pipeline started — concept=%r, refs=%d", concept, len(character_refs))
-    if video_config is not None:
-        logger.info(
-            "Spicy mode active — v%s, intensity=%s, %d config characters, "
-            "%d modifiers",
-            video_config.version,
-            video_config.spicy_mode.intensity,
-            len(video_config.characters),
-            len(video_config.spicy_mode.enabled_modifiers),
-        )
-        print(
-            f"=== SPICY MODE: intensity={video_config.spicy_mode.intensity}, "
-            f"characters={len(video_config.characters)} ==="
+    if video_config.story_plan is None:
+        raise ValueError(
+            "video_config.story_plan is required — define a story_plan "
+            "section in video.json with title, style, characters, and scenes."
         )
 
-        # Resolve config character images and merge into character_refs
-        from grok_spicy.config import resolve_character_images
+    concept = video_config.story_plan.title
+    logger.info("Pipeline started — title=%r, refs=%d", concept, len(character_refs))
+    logger.info(
+        "Config — v%s, intensity=%s, %d config characters, %d modifiers",
+        video_config.version,
+        video_config.spicy_mode.intensity,
+        len(video_config.characters),
+        len(video_config.spicy_mode.enabled_modifiers),
+    )
+    print(
+        f"=== CONFIG: intensity={video_config.spicy_mode.intensity}, "
+        f"characters={len(video_config.characters)} ==="
+    )
 
-        resolved_images = resolve_character_images(video_config)
-        for cfg_char in video_config.characters:
-            imgs = resolved_images.get(cfg_char.id, [])
-            if imgs and cfg_char.name not in character_refs:
-                # Use the first image as the reference for this character
-                first_img = imgs[0]
-                if not first_img.startswith(("http://", "https://")):
-                    character_refs[cfg_char.name] = first_img
+    # Resolve config character images and merge into character_refs.
+    import uuid
+
+    from grok_spicy.config import resolve_character_images
+
+    staging_id = uuid.uuid4().hex[:8]
+    resolved_images = resolve_character_images(video_config)
+    for cfg_char in video_config.characters:
+        imgs = resolved_images.get(cfg_char.id, [])
+        if imgs and cfg_char.name not in character_refs:
+            first_img = imgs[0]
+            if not first_img.startswith(("http://", "https://")):
+                character_refs[cfg_char.name] = first_img
+                logger.info(
+                    "Config: added local ref image for %r: %s",
+                    cfg_char.name,
+                    first_img,
+                )
+            elif not config.dry_run:
+                safe = cfg_char.name.replace(" ", "_")
+                dest = f"output/staging/{staging_id}/references/{safe}_config.jpg"
+                try:
+                    download(first_img, dest)
+                    character_refs[cfg_char.name] = dest
                     logger.info(
-                        "Spicy config: added local ref image for %r: %s",
+                        "Config: downloaded ref image for %r: %s",
+                        cfg_char.name,
+                        dest,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to download config image for %r: %s",
                         cfg_char.name,
                         first_img,
+                        exc_info=True,
                     )
-                elif not config.dry_run:
-                    # Download URL to local cache (skip in dry-run)
-                    safe = cfg_char.name.replace(" ", "_")
-                    dest = f"output/staging/references/{safe}_config.jpg"
-                    try:
-                        download(first_img, dest)
-                        character_refs[cfg_char.name] = dest
-                        logger.info(
-                            "Spicy config: downloaded ref image for %r: %s",
-                            cfg_char.name,
-                            dest,
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Failed to download config image for %r: %s",
-                            cfg_char.name,
-                            first_img,
-                            exc_info=True,
-                        )
 
     run_id = observer.on_run_start(concept)
     logger.info("Run ID assigned: %d", run_id)
@@ -250,116 +299,36 @@ def video_pipeline(
         character_refs = updated_refs
 
     try:
-        if script_plan is not None:
-            # ═══ SCRIPT MODE: skip ideation, use pre-built plan ═══
-            logger.info("SCRIPT MODE: using pre-built plan, skipping ideation")
-            print("=== SCRIPT MODE: Using provided plan (ideation skipped) ===")
-            plan = script_plan
-            matched_refs: dict[str, str] = {}
-            print(
-                f"-> {plan.title}: {len(plan.characters)} chars, "
-                f"{len(plan.scenes)} scenes"
-            )
-            _notify(observer, "on_plan", run_id, plan)
-        else:
-            # ═══ PRE-IDEATION: ANALYZE REFERENCE IMAGES ═══
-            ref_descriptions: dict[str, str] | None = None
-            if character_refs:
-                logger.info(
-                    "Pre-ideation: analyzing %d reference images",
-                    len(character_refs),
-                )
-                print("=== Pre-ideation: Analyzing reference images ===")
-                desc_futures = [
-                    describe_reference_image.submit(name, path, config=config)
-                    for name, path in character_refs.items()
-                ]
-                ref_descriptions = {}
-                for fut in desc_futures:
-                    desc = fut.result()
-                    ref_descriptions[desc.name] = desc.visual_description
-                    logger.info(
-                        "Reference described: %s (%d words)",
-                        desc.name,
-                        len(desc.visual_description.split()),
-                    )
-                    print(f"  {desc.name}: description extracted")
+        # ═══ PLAN FROM CONFIG (no ideation) ═══
+        plan = video_config.story_plan  # type: ignore[assignment]  # validated above
+        logger.info(
+            "Plan loaded from config: title=%r, characters=%d, scenes=%d, "
+            "style=%r, aspect=%s",
+            plan.title,
+            len(plan.characters),
+            len(plan.scenes),
+            plan.style,
+            plan.aspect_ratio,
+        )
+        print(
+            f"-> {plan.title}: {len(plan.characters)} chars, "
+            f"{len(plan.scenes)} scenes"
+        )
+        _notify(observer, "on_plan", run_id, plan)
 
-            # ═══ STEP 1: IDEATION ═══
-            logger.info("STEP 1: Ideation — generating story plan")
-            print("=== STEP 1: Planning story ===")
+        # Merge spicy_traits from config characters into plan characters
+        for char in plan.characters:
+            for cfg_char in video_config.characters:
+                if char.name == cfg_char.name and cfg_char.spicy_traits:
+                    char.spicy_traits = cfg_char.spicy_traits
+                    break
 
-            # video_config is passed to plan_story() which injects
-            # global_prefix, INVIOLABLE RULES, and SPICY MODIFIERS via
-            # ideation_user_message() and activates SPICY_SYSTEM_PROMPT.
-            plan = plan_story(
-                concept,
-                ref_descriptions=ref_descriptions,
-                config=config,
-                video_config=video_config,
-            )
-            logger.info(
-                "STEP 1 complete: title=%r, characters=%d, scenes=%d, "
-                "style=%r, aspect=%s",
-                plan.title,
-                len(plan.characters),
-                len(plan.scenes),
-                plan.style,
-                plan.aspect_ratio,
-            )
-            for c in plan.characters:
-                logger.debug(
-                    "Character planned: name=%r, role=%r, visual_desc_len=%d",
-                    c.name,
-                    c.role,
-                    len(c.visual_description),
-                )
-            for s in plan.scenes:
-                logger.debug(
-                    "Scene planned: id=%d, title=%r, chars=%s, duration=%ds",
-                    s.scene_id,
-                    s.title,
-                    s.characters_present,
-                    s.duration_seconds,
-                )
-            print(
-                f"-> {plan.title}: {len(plan.characters)} chars, "
-                f"{len(plan.scenes)} scenes"
-            )
-            _notify(observer, "on_plan", run_id, plan)
-
-            # Match uploaded reference names to generated character names
-            matched_refs = _match_character_refs(
-                character_refs, plan.characters, dry_run=config.dry_run
-            )
-            if matched_refs:
-                print(f"  Ref images matched: {list(matched_refs.keys())}")
-
-            # Override visual descriptions with ref-extracted ones (bulletproof —
-            # the LLM may have ignored the VERBATIM instruction and padded them).
-            # ref_descriptions is keyed by ref labels (e.g. "women1") but
-            # characters are named by the LLM (e.g. "Woman1"). Use matched_refs
-            # (char_name → file_path) + character_refs (ref_label → file_path)
-            # to bridge the gap.
-            if ref_descriptions and matched_refs:
-                # Build reverse map: file_path → ref_label
-                path_to_label = {path: label for label, path in character_refs.items()}
-                for char in plan.characters:
-                    if char.name not in matched_refs:
-                        continue
-                    # matched_refs[char.name] is the file path for this character
-                    ref_label = path_to_label.get(matched_refs[char.name])
-                    if ref_label and ref_label in ref_descriptions:
-                        old_len = len(char.visual_description)
-                        char.visual_description = ref_descriptions[ref_label]
-                        logger.info(
-                            "Overrode visual_description for %r (via ref label %r): "
-                            "%d chars → %d chars (from ref photo)",
-                            char.name,
-                            ref_label,
-                            old_len,
-                            len(char.visual_description),
-                        )
+        # Match uploaded reference names to plan character names
+        matched_refs = _match_character_refs(
+            character_refs, plan.characters, dry_run=config.dry_run
+        )
+        if matched_refs:
+            print(f"  Ref images matched: {list(matched_refs.keys())}")
 
         # ═══ STYLE OVERRIDE ═══
         plan.style = config.effective_style(plan.style)
@@ -392,19 +361,41 @@ def video_pipeline(
                 scene.duration_seconds = clamped
 
         # ═══ STEP 2: CHARACTER SHEETS (parallel) ═══
-        # NOTE: Spicy traits (character.spicy_traits) are NOT baked into
-        # visual_description here.  They are injected at the prompt level
-        # inside character_stylize_prompt / character_generate_prompt only,
-        # keeping the canonical visual_description clean for the DB, vision
-        # checks, keyframes, and script output.
+        # INVARIANT: character.visual_description is NEVER mutated after
+        # ideation.  Spicy traits live in character.spicy_traits and are
+        # injected at the prompt level only (character_*_prompt functions
+        # use a local `desc` copy).  This keeps the canonical description
+        # clean for DB writes, vision checks, keyframes, and script output.
+        # Violating this invariant corrupts the DB (bug #6).
+        #
+        # Enhancement mode (Case 3): when a config character has both
+        # images and a description, the description is passed as
+        # `enhancements` for a two-pass generation (base + enhance).
         logger.info("STEP 2: Character sheets — generating %d", len(plan.characters))
         print("=== STEP 2: Character sheets ===")
+
+        # Build {char_name: enhancement_text_or_None} lookup
+        _enhancements: dict[str, str | None] = {}
+        for c in plan.characters:
+            cfg_char = next(
+                (sc for sc in video_config.characters if sc.name == c.name), None
+            )
+            if cfg_char and cfg_char.images and cfg_char.description:
+                _enhancements[c.name] = cfg_char.description
+                logger.info(
+                    "Character %r: Case 3 (images + description) — enhancement mode",
+                    c.name,
+                )
+            else:
+                _enhancements[c.name] = None
+
         char_futures = [
             generate_character_sheet.submit(
                 c,
                 plan.style,
                 plan.aspect_ratio,
                 reference_image_path=matched_refs.get(c.name),
+                enhancements=_enhancements.get(c.name),
                 config=config,
                 video_config=video_config,
             )
@@ -468,8 +459,17 @@ def video_pipeline(
         print(f"-> {script}")
         _notify(observer, "on_script", run_id, script)
 
-        # Save intermediate state
-        state = PipelineState(plan=plan, characters=characters, keyframes=keyframes)
+        # Save intermediate state (with resumability metadata)
+        state = PipelineState(
+            plan=plan,
+            characters=characters,
+            keyframes=keyframes,
+            run_id=run_id,
+            config=config,
+            video_config=video_config,
+            character_refs=character_refs or {},
+            matched_refs=matched_refs,
+        )
         _save_state(state, run_dir=config.run_dir)
 
         # ═══ STEP 5: VIDEOS (sequential) ═══

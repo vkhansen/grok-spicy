@@ -1,105 +1,89 @@
-"""Unit tests for CLI helpers."""
+"""Unit tests for CLI entry point."""
 
-import os
+import json
 import sys
-import tempfile
 
-from grok_spicy.__main__ import _parse_refs, main
-
-
-def test_parse_refs_valid():
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-        f.write(b"fake image")
-        tmp = f.name
-
-    try:
-        refs = _parse_refs([f"Fox={tmp}"])
-        assert "Fox" in refs
-        assert refs["Fox"].endswith(".jpg")
-        assert os.path.isfile(refs["Fox"])
-    finally:
-        os.unlink(tmp)
-        # Clean up the copy
-        for v in refs.values():
-            if os.path.isfile(v):
-                os.unlink(v)
+from grok_spicy.__main__ import main
 
 
-def test_parse_refs_missing_file(capsys):
-    refs = _parse_refs(["Fox=/nonexistent/path.jpg"])
-    assert refs == {}
-    captured = capsys.readouterr()
-    assert "Warning" in captured.err
+def _write_minimal_config(tmp_path) -> str:
+    """Write a minimal valid video.json and return its path."""
+    cfg = {
+        "version": "1.0",
+        "spicy_mode": {
+            "enabled": True,
+            "enabled_modifiers": [],
+            "intensity": "low",
+            "global_prefix": "",
+        },
+        "story_plan": {
+            "title": "Test Story",
+            "style": "cinematic realism",
+            "color_palette": "warm ambers",
+            "characters": [
+                {
+                    "name": "Fox",
+                    "role": "protagonist",
+                    "visual_description": "A " * 40,
+                    "personality_cues": ["brave"],
+                }
+            ],
+            "scenes": [
+                {
+                    "scene_id": 1,
+                    "title": "Scene One",
+                    "description": "Fox enters.",
+                    "characters_present": ["Fox"],
+                    "setting": "forest",
+                    "camera": "wide",
+                    "mood": "warm",
+                    "action": "Fox walks",
+                    "prompt_summary": "Fox walks through the forest.",
+                    "duration_seconds": 8,
+                }
+            ],
+        },
+    }
+    path = tmp_path / "video.json"
+    path.write_text(json.dumps(cfg), encoding="utf-8")
+    return str(path)
 
 
-def test_parse_refs_spaces_in_name():
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-        f.write(b"fake image")
-        tmp = f.name
-
-    try:
-        refs = _parse_refs([f"Fox Lady={tmp}"])
-        assert "Fox Lady" in refs
-        # Dest path should have underscores
-        assert "Fox_Lady" in refs["Fox Lady"]
-    finally:
-        os.unlink(tmp)
-        for v in refs.values():
-            if os.path.isfile(v):
-                os.unlink(v)
-
-
-def test_parse_refs_empty():
-    assert _parse_refs([]) == {}
-
-
-# ─── --prompt-file tests ──────────────────────────────────
-
-
-def test_prompt_file_reads_lines(monkeypatch, tmp_path):
-    """--prompt-file parses --- separated blocks into concepts."""
-    pf = tmp_path / "prompts.txt"
-    pf.write_text("A fox adventure\n---\n# comment\nAn owl story\n", encoding="utf-8")
-
-    monkeypatch.setattr(sys, "argv", ["grok-spicy", "--prompt-file", str(pf)])
-    # Will exit(1) because no API key — but we can check concept parsing
-    # by intercepting before env validation. Patch sys.exit and pipeline import.
-    captured_concepts: list[str] = []
-
-    def fake_pipeline(concept, **kwargs):
-        captured_concepts.append(concept)
-        return "ok"
-
-    monkeypatch.setenv("GROK_API_KEY", "test-key")
-    monkeypatch.setattr("grok_spicy.pipeline.video_pipeline", fake_pipeline)
-    main()
-    assert captured_concepts == ["A fox adventure", "An owl story"]
-
-
-def test_prompt_file_single_concept(monkeypatch, tmp_path):
-    """--prompt-file without --- treats entire file as one concept."""
-    pf = tmp_path / "prompts.txt"
-    pf.write_text("Scene 1: Fox enters\n\nScene 2: Owl watches\n", encoding="utf-8")
-
-    monkeypatch.setattr(sys, "argv", ["grok-spicy", "--prompt-file", str(pf)])
-    captured_concepts: list[str] = []
-
-    def fake_pipeline(concept, **kwargs):
-        captured_concepts.append(concept)
-        return "ok"
-
-    monkeypatch.setenv("GROK_API_KEY", "test-key")
-    monkeypatch.setattr("grok_spicy.pipeline.video_pipeline", fake_pipeline)
-    main()
-    assert len(captured_concepts) == 1
-    assert "Scene 1" in captured_concepts[0]
-    assert "Scene 2" in captured_concepts[0]
-
-
-def test_prompt_file_missing_exits(monkeypatch):
-    """--prompt-file with a nonexistent path exits with code 1."""
+def test_config_only_pipeline(monkeypatch, tmp_path):
+    """CLI loads video.json and runs pipeline without concept arg."""
+    cfg_path = _write_minimal_config(tmp_path)
     monkeypatch.setattr(
-        sys, "argv", ["grok-spicy", "--prompt-file", "/no/such/file.txt"]
+        sys, "argv", ["grok-spicy", "--config", cfg_path]
+    )
+
+    captured = []
+
+    def fake_pipeline(video_config, **kwargs):
+        captured.append(video_config.story_plan.title)
+        return "ok"
+
+    monkeypatch.setenv("GROK_API_KEY", "test-key")
+    monkeypatch.setattr("grok_spicy.pipeline.video_pipeline", fake_pipeline)
+    main()
+    assert captured == ["Test Story"]
+
+
+def test_missing_story_plan_exits(monkeypatch, tmp_path):
+    """CLI exits with error if video.json has no story_plan."""
+    cfg = {
+        "version": "1.0",
+        "spicy_mode": {
+            "enabled": True,
+            "enabled_modifiers": [],
+            "intensity": "low",
+            "global_prefix": "",
+        },
+    }
+    path = tmp_path / "video.json"
+    path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    monkeypatch.setattr(
+        sys, "argv", ["grok-spicy", "--config", str(path)]
     )
     try:
         main()
@@ -108,59 +92,37 @@ def test_prompt_file_missing_exits(monkeypatch):
         assert exc.code == 1
 
 
-def test_prompt_file_empty_exits(monkeypatch, tmp_path):
-    """--prompt-file with an all-blank/comment file exits with code 1."""
-    pf = tmp_path / "empty.txt"
-    pf.write_text("# just a comment\n\n  \n", encoding="utf-8")
-
-    monkeypatch.setattr(sys, "argv", ["grok-spicy", "--prompt-file", str(pf)])
-    try:
-        main()
-        raise AssertionError("Should have called sys.exit")
-    except SystemExit as exc:
-        assert exc.code == 1
-
-
-def test_prompt_file_overrides_positional(monkeypatch, tmp_path):
-    """--prompt-file takes priority when both positional and file are given."""
-    pf = tmp_path / "prompts.txt"
-    pf.write_text("From file\n", encoding="utf-8")
-
+def test_dry_run_flag(monkeypatch, tmp_path):
+    """--dry-run skips API key check and passes dry_run to config."""
+    cfg_path = _write_minimal_config(tmp_path)
     monkeypatch.setattr(
-        sys,
-        "argv",
-        ["grok-spicy", "From positional", "--prompt-file", str(pf)],
+        sys, "argv", ["grok-spicy", "--config", cfg_path, "--dry-run"]
     )
 
-    captured: list[str] = []
+    captured_config = []
 
-    def fake_pipeline(concept, **kwargs):
-        captured.append(concept)
+    def fake_pipeline(video_config, **kwargs):
+        captured_config.append(kwargs.get("config"))
+        return "ok"
+
+    monkeypatch.setattr("grok_spicy.pipeline.video_pipeline", fake_pipeline)
+    main()
+    assert captured_config[0].dry_run is True
+
+
+def test_no_args_loads_default_config(monkeypatch, tmp_path):
+    """Running with no args tries to load ./video.json."""
+    cfg_path = _write_minimal_config(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["grok-spicy"])
+
+    captured = []
+
+    def fake_pipeline(video_config, **kwargs):
+        captured.append(video_config.story_plan.title)
         return "ok"
 
     monkeypatch.setenv("GROK_API_KEY", "test-key")
     monkeypatch.setattr("grok_spicy.pipeline.video_pipeline", fake_pipeline)
     main()
-    assert captured == ["From file"]
-
-
-def test_parse_refs_multiple():
-    files = []
-    try:
-        for name in ["Fox", "Owl"]:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-                f.write(b"fake image")
-            files.append((name, f.name))
-
-        raw = [f"{name}={path}" for name, path in files]
-        refs = _parse_refs(raw)
-        assert len(refs) == 2
-        assert "Fox" in refs
-        assert "Owl" in refs
-    finally:
-        for _, path in files:
-            if os.path.isfile(path):
-                os.unlink(path)
-        for v in refs.values():
-            if os.path.isfile(v):
-                os.unlink(v)
+    assert captured == ["Test Story"]

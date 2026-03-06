@@ -130,6 +130,9 @@ class CharacterAsset(BaseModel):
     visual_description: str
     consistency_score: float
     generation_attempts: int
+    base_portrait_path: str | None = None
+    enhancement_applied: bool = False
+    enhancements: list[str] = Field(default_factory=list)
 
 
 class KeyframeAsset(BaseModel):
@@ -223,6 +226,12 @@ class PipelineState(BaseModel):
     keyframes: list[KeyframeAsset] = []
     videos: list[VideoAsset] = []
     final_video_path: str | None = None
+    # Resumability metadata (optional for backward compat with old state.json)
+    run_id: int | str | None = None
+    config: PipelineConfig | None = None
+    video_config: VideoConfig | None = None
+    character_refs: dict[str, str] = Field(default_factory=dict)
+    matched_refs: dict[str, str] = Field(default_factory=dict)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -267,10 +276,20 @@ class DefaultVideo(BaseModel):
 
 
 class VideoConfig(BaseModel):
-    """Top-level schema for video.json — spicy mode configuration."""
+    """Top-level schema for video.json — the sole pipeline input.
+
+    Contains the story plan (characters + scenes), spicy mode config,
+    narrative constraints, and default video settings.  No LLM ideation
+    step — everything is defined explicitly here.
+    """
 
     version: str = "1.0"
     spicy_mode: SpicyMode
     narrative_core: NarrativeCore | None = None
     characters: list[SpicyCharacter] = []
     default_video: DefaultVideo = DefaultVideo()
+    story_plan: StoryPlan | None = None
+
+
+# Rebuild PipelineState now that VideoConfig is defined (forward ref).
+PipelineState.model_rebuild()

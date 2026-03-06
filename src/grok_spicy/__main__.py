@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 def setup_logging(log_dir: str = "output", verbose: bool = False) -> None:
     """Configure logging with file and console handlers.
 
-    - File handler: DEBUG level → ``{log_dir}/grok_spicy.log`` (always)
-    - Console handler: DEBUG level (if *verbose*) or INFO level → stderr
+    - File handler: DEBUG level -> ``{log_dir}/grok_spicy.log`` (always)
+    - Console handler: DEBUG level (if *verbose*) or INFO level -> stderr
 
     Args:
         log_dir: Directory for the log file.
@@ -66,38 +66,12 @@ def setup_logging(log_dir: str = "output", verbose: bool = False) -> None:
     )
 
 
-def _parse_refs(raw_refs: list[str]) -> dict[str, str]:
-    """Parse --ref NAME=PATH args into {name: dest_path} dict."""
-    character_refs: dict[str, str] = {}
-    for ref in raw_refs:
-        name, _, path = ref.partition("=")
-        name = name.strip()
-        path = path.strip()
-        if not path or not os.path.isfile(path):
-            print(f"Warning: reference image not found: {path}", file=sys.stderr)
-            continue
-        safe_name = name.replace(" ", "_")
-        dest = f"output/staging/references/{safe_name}.jpg"
-        os.makedirs("output/staging/references", exist_ok=True)
-        shutil.copy2(path, dest)
-        character_refs[name] = dest
-    return character_refs
-
-
 def main():
     load_dotenv()
 
     parser = argparse.ArgumentParser(
         prog="grok-spicy",
-        description="Generate a multi-scene video from a text concept using Grok APIs",
-    )
-    parser.add_argument("concept", nargs="?", help="Story concept (1-2 sentences)")
-    parser.add_argument(
-        "--prompt-file",
-        metavar="FILE",
-        help="Read concepts from a text file. Use '---' lines to separate "
-        "multiple concepts; without '---', blank lines are separators "
-        "(legacy mode). Lines starting with # are comments.",
+        description="Generate a multi-scene video from a video.json config using Grok APIs",
     )
     parser.add_argument("--output-dir", default="output", help="Output directory")
     parser.add_argument(
@@ -117,19 +91,6 @@ def main():
         help="Port for the dashboard server (default: 8420)",
     )
     parser.add_argument(
-        "--ref",
-        action="append",
-        default=[],
-        metavar="NAME=PATH",
-        help="Character reference image: NAME=PATH (repeatable)",
-    )
-    parser.add_argument(
-        "--script",
-        metavar="FILE",
-        help="Path to a JSON file matching the StoryPlan schema. "
-        "Skips ideation — the plan is used verbatim.",
-    )
-    parser.add_argument(
         "--max-duration",
         type=int,
         default=15,
@@ -145,7 +106,7 @@ def main():
     parser.add_argument(
         "--style-override",
         metavar="TEXT",
-        help="Replace the LLM-generated plan.style with this string",
+        help="Replace the plan.style with this string",
     )
     parser.add_argument(
         "--consistency-threshold",
@@ -166,11 +127,6 @@ def main():
         metavar="PATH",
         default=None,
         help="Path to video.json config file (default: ./video.json)",
-    )
-    parser.add_argument(
-        "--spicy",
-        action="store_true",
-        help="Enable spicy mode using video.json configuration",
     )
     parser.add_argument(
         "--dry-run",
@@ -235,48 +191,31 @@ def main():
         config_kw["max_retries"] = args.max_retries
     config = PipelineConfig(**config_kw)
 
-    # Load spicy VideoConfig if --spicy is enabled
-    video_config = None
-    if args.spicy:
-        from pathlib import Path
+    # Load VideoConfig (always — video.json is the sole input)
+    from pathlib import Path
 
-        from grok_spicy.config import load_video_config
+    from grok_spicy.config import load_video_config
 
-        config_path = Path(args.config) if args.config else None
-        video_config = load_video_config(config_path)
-        logger.info(
-            "Spicy mode enabled — config v%s, intensity=%s, %d characters, "
-            "%d modifiers",
-            video_config.version,
-            video_config.spicy_mode.intensity,
-            len(video_config.characters),
-            len(video_config.spicy_mode.enabled_modifiers),
+    config_path = Path(args.config) if args.config else None
+    video_config = load_video_config(config_path)
+    logger.info(
+        "Config loaded — v%s, intensity=%s, %d characters, %d modifiers",
+        video_config.version,
+        video_config.spicy_mode.intensity,
+        len(video_config.characters),
+        len(video_config.spicy_mode.enabled_modifiers),
+    )
+
+    if video_config.story_plan is None:
+        print(
+            "Error: video.json must contain a 'story_plan' section with "
+            "title, style, color_palette, characters, and scenes.",
+            file=sys.stderr,
         )
+        sys.exit(1)
 
     # Re-configure logging now that we know the verbosity flag
     setup_logging(verbose=args.verbose)
-
-    # ─── --script mode: load pre-built StoryPlan ──────────────
-    script_plan = None
-    if args.script:
-        if not os.path.isfile(args.script):
-            print(f"Error: script file not found: {args.script}", file=sys.stderr)
-            sys.exit(1)
-        from grok_spicy.schemas import StoryPlan
-
-        with open(args.script, encoding="utf-8") as f:
-            raw = f.read()
-        try:
-            script_plan = StoryPlan.model_validate_json(raw)
-        except Exception as exc:
-            print(f"Error: invalid script file: {exc}", file=sys.stderr)
-            sys.exit(1)
-        logger.info(
-            "Loaded script plan: title=%r, %d characters, %d scenes",
-            script_plan.title,
-            len(script_plan.characters),
-            len(script_plan.scenes),
-        )
 
     # ─── --web mode: server only, no pipeline ─────────────────
     if args.web:
@@ -294,64 +233,6 @@ def main():
         print()
         uvicorn.run(app, host="0.0.0.0", port=args.port)
         sys.exit(0)
-
-    # Build list of concepts to run
-    concepts: list[str] = []
-    if args.prompt_file:
-        path = args.prompt_file
-        if not os.path.isfile(path):
-            print(f"Error: prompt file not found: {path}", file=sys.stderr)
-            sys.exit(1)
-        # Parse prompt file: use "---" lines to separate multiple concepts.
-        # Without "---" separators, the entire file is one concept.
-        # Lines starting with # are always comments.
-        # Blank lines within a concept are preserved as newlines.
-        with open(path, encoding="utf-8") as f:
-            raw_lines = f.readlines()
-        has_separators = any(line.strip() == "---" for line in raw_lines)
-        current_block: list[str] = []
-        for line in raw_lines:
-            stripped = line.strip()
-            if has_separators and stripped == "---":
-                # Explicit separator
-                if current_block:
-                    concepts.append("\n".join(current_block))
-                    current_block = []
-            elif stripped.startswith("#"):
-                continue
-            else:
-                # Preserve blank lines within a concept as newlines
-                if stripped:
-                    current_block.append(stripped)
-                elif current_block:
-                    current_block.append("")
-        if current_block:
-            # Strip trailing blank lines from the last block
-            while current_block and not current_block[-1]:
-                current_block.pop()
-            if current_block:
-                concepts.append("\n".join(current_block))
-        if not concepts:
-            print(f"Error: no prompts found in {path}", file=sys.stderr)
-            sys.exit(1)
-        logger.info("Loaded %d concept(s) from %s", len(concepts), path)
-        for idx, c in enumerate(concepts, 1):
-            logger.debug("  Concept %d (%d chars): %.200s", idx, len(c), c)
-    elif args.concept:
-        concepts.append(args.concept)
-    elif script_plan:
-        # --script mode: concept not needed, use plan title as placeholder
-        concepts.append(script_plan.title)
-    else:
-        parser.print_help()
-        sys.exit(0)
-
-    logger.info(
-        "Concepts to process: %d, serve=%s, refs=%d",
-        len(concepts),
-        args.serve,
-        len(args.ref),
-    )
 
     # Environment validation (skip in dry-run mode)
     if config.dry_run:
@@ -374,12 +255,8 @@ def main():
                 file=sys.stderr,
             )
 
-    # Parse reference images
-    character_refs = _parse_refs(args.ref) if args.ref else None
-    if character_refs:
-        logger.info("Parsed reference images: %s", list(character_refs.keys()))
-
-    total = len(concepts)
+    concept = video_config.story_plan.title
+    logger.info("Running pipeline for: %s", concept)
 
     # ─── --serve mode: pipeline + dashboard server ────────────
     if args.serve:
@@ -409,9 +286,6 @@ def main():
         # re-apply so our handlers and propagate=False survive.
         setup_logging(verbose=args.verbose)
 
-        # Print AFTER Prefect import so it appears below Prefect's
-        # "Starting temporary server on http://127.0.0.1:XXXX" message.
-        # That Prefect URL is NOT the dashboard — this one is.
         print()
         print("=" * 60)
         print(f"  DASHBOARD: http://localhost:{args.port}")
@@ -419,25 +293,17 @@ def main():
         print("=" * 60)
         print()
 
-        for i, concept in enumerate(concepts, 1):
-            if total > 1:
-                print(f"\n{'='*60}")
-                print(f"[{i}/{total}] {concept}")
-                print(f"{'='*60}")
-            observer = WebObserver(conn, event_bus)
-            result = video_pipeline(
-                concept,
-                observer=observer,
-                character_refs=character_refs,
-                config=config,
-                script_plan=script_plan,
-                video_config=video_config,
-            )
-            print(f"\nDone: {result}")
+        observer = WebObserver(conn, event_bus)
+        result = video_pipeline(
+            video_config,
+            observer=observer,
+            config=config,
+        )
+        print(f"\nDone: {result}")
 
         print()
         print("=" * 60)
-        print(f"  All {total} run(s) complete.")
+        print("  Run complete.")
         print(f"  DASHBOARD: http://localhost:{args.port}")
         print("  Press Ctrl+C to stop the server.")
         print("=" * 60)
@@ -450,22 +316,11 @@ def main():
         # re-apply so our handlers and propagate=False survive.
         setup_logging(verbose=args.verbose)
 
-        for i, concept in enumerate(concepts, 1):
-            if total > 1:
-                print(f"\n{'='*60}")
-                print(f"[{i}/{total}] {concept}")
-                print(f"{'='*60}")
-            result = video_pipeline(
-                concept,
-                character_refs=character_refs,
-                config=config,
-                script_plan=script_plan,
-                video_config=video_config,
-            )
-            print(f"\nDone: {result}")
-
-        if total > 1:
-            print(f"\nAll {total} runs complete.")
+        result = video_pipeline(
+            video_config,
+            config=config,
+        )
+        print(f"\nDone: {result}")
 
 
 if __name__ == "__main__":

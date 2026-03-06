@@ -102,44 +102,94 @@ SPICY_SYSTEM_PROMPT = (
 def _mock_story_plan(
     concept: str,
     ref_descriptions: dict[str, str] | None = None,
+    video_config: VideoConfig | None = None,
 ) -> StoryPlan:
-    """Build a minimal StoryPlan for dry-run mode."""
-    # Use ref names as character names if available
-    names = list(ref_descriptions.keys()) if ref_descriptions else ["Alice", "Bob"]
+    """Build a minimal StoryPlan for dry-run mode.
 
-    characters = [
-        Character(
-            name=name,
-            role="protagonist" if i == 0 else "supporting",
-            visual_description=(
-                ref_descriptions[name]
-                if ref_descriptions and name in ref_descriptions
-                else f"[DRY-RUN] Placeholder appearance for {name}"
-            ),
-            personality_cues=["[DRY-RUN]"],
-        )
-        for i, name in enumerate(names[:2])
-    ]
+    When *video_config* is provided (spicy mode), the mock plan uses config
+    characters, spicy_traits, and narrative structure instead of hardcoded
+    placeholders so the rest of the dry-run pipeline sees realistic data.
+    """
+    # ── Determine character names/descriptions ──
+    cfg_chars = (
+        video_config.characters
+        if video_config and video_config.spicy_mode.enabled and video_config.characters
+        else None
+    )
 
+    if cfg_chars:
+        characters = [
+            Character(
+                name=sc.name,
+                role="protagonist" if i == 0 else "supporting",
+                visual_description=(
+                    ref_descriptions[sc.name]
+                    if ref_descriptions and sc.name in ref_descriptions
+                    else f"[DRY-RUN] {sc.description}"
+                ),
+                personality_cues=["[DRY-RUN]"],
+                spicy_traits=sc.spicy_traits,
+            )
+            for i, sc in enumerate(cfg_chars)
+        ]
+    else:
+        names = list(ref_descriptions.keys()) if ref_descriptions else ["Alice", "Bob"]
+        characters = [
+            Character(
+                name=name,
+                role="protagonist" if i == 0 else "supporting",
+                visual_description=(
+                    ref_descriptions[name]
+                    if ref_descriptions and name in ref_descriptions
+                    else f"[DRY-RUN] Placeholder appearance for {name}"
+                ),
+                personality_cues=["[DRY-RUN]"],
+            )
+            for i, name in enumerate(names[:2])
+        ]
+
+    # ── Derive scenes from escalation_arc if available ──
+    arc_text = ""
+    if video_config and video_config.narrative_core:
+        arc_text = video_config.narrative_core.escalation_arc
+
+    scene_count = 3
     scenes = [
         Scene(
             scene_id=i + 1,
             title=f"[DRY-RUN] Scene {i + 1}",
-            description=f"[DRY-RUN] Placeholder scene {i + 1} for: {concept}",
+            description=(
+                f"[DRY-RUN] {arc_text} — stage {i + 1}"
+                if arc_text
+                else f"[DRY-RUN] Placeholder scene {i + 1} for: {concept}"
+            ),
             characters_present=[c.name for c in characters],
-            setting="[DRY-RUN] Placeholder setting",
+            setting=(
+                f"[DRY-RUN] {video_config.default_video.scene}"
+                if video_config and video_config.default_video.scene
+                else "[DRY-RUN] Placeholder setting"
+            ),
             camera="medium shot, slow dolly forward",
             mood="warm golden hour, soft shadows",
             action=f"[DRY-RUN] Placeholder action for scene {i + 1}",
             prompt_summary=f"[DRY-RUN] Scene {i + 1} action summary",
             duration_seconds=8,
         )
-        for i in range(3)
+        for i in range(scene_count)
     ]
+
+    # ── Style: incorporate global_prefix if spicy ──
+    style = "[DRY-RUN] Cinematic realism with soft volumetric lighting"
+    if (
+        video_config
+        and video_config.spicy_mode.enabled
+        and video_config.spicy_mode.global_prefix
+    ):
+        style = f"[DRY-RUN] {video_config.spicy_mode.global_prefix}{style}"
 
     return StoryPlan(
         title=f"[DRY-RUN] {concept[:60]}",
-        style="[DRY-RUN] Cinematic realism with soft volumetric lighting",
+        style=style,
         color_palette="[DRY-RUN] warm ambers, deep blues",
         aspect_ratio="16:9",
         characters=characters,
@@ -197,7 +247,7 @@ def plan_story(
             run_dir=config.run_dir,
         )
         logger.info("Dry-run: wrote ideation prompts")
-        result = _mock_story_plan(concept, ref_descriptions)
+        result = _mock_story_plan(concept, ref_descriptions, video_config)
     else:
         from xai_sdk.chat import system, user
 
@@ -214,6 +264,9 @@ def plan_story(
         for char in result.characters:
             for spicy_char in video_config.characters:
                 if char.name == spicy_char.name:
+                    # IMPORTANT: only set spicy_traits — never mutate
+                    # visual_description.  Traits are injected at the
+                    # prompt level only (via character_*_prompt functions).
                     char.spicy_traits = spicy_char.spicy_traits
                     break
 
