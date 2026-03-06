@@ -62,15 +62,8 @@ def load_video_config(path: Path | None = None) -> VideoConfig:
     try:
         cfg = VideoConfig.model_validate(raw)
     except Exception as exc:
-        logger.warning(
-            "Invalid config schema in %s (%s) — using built-in defaults",
-            resolved,
-            exc,
-        )
-        cfg = _default_config()
-        _cached_config = cfg
-        _cached_path = resolved
-        return cfg
+        logger.error("Invalid config schema in %s:\n%s", resolved, exc)
+        raise SystemExit(1) from exc
 
     logger.info(
         "Loaded video config v%s from %s — intensity=%s, characters=%d, modifiers=%d",

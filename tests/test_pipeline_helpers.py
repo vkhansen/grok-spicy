@@ -47,30 +47,37 @@ def test_match_empty_refs():
 
 def test_match_exact_case_insensitive():
     chars = _make_chars("Fox", "Owl")
-    refs = {"fox": "/path/fox.jpg", "OWL": "/path/owl.jpg"}
+    refs = {"fox": ["/path/fox.jpg"], "OWL": ["/path/owl.jpg"]}
     matched = _match_character_refs(refs, chars)
-    assert matched == {"Fox": "/path/fox.jpg", "Owl": "/path/owl.jpg"}
+    assert matched == {"Fox": ["/path/fox.jpg"], "Owl": ["/path/owl.jpg"]}
 
 
 def test_match_exact_same_case():
     chars = _make_chars("Fox")
-    refs = {"Fox": "/path/fox.jpg"}
+    refs = {"Fox": ["/path/fox.jpg"]}
     matched = _match_character_refs(refs, chars)
-    assert matched == {"Fox": "/path/fox.jpg"}
+    assert matched == {"Fox": ["/path/fox.jpg"]}
+
+
+def test_match_exact_multiple_images():
+    chars = _make_chars("Fox")
+    refs = {"Fox": ["/path/fox1.jpg", "/path/fox2.jpg", "/path/fox3.jpg"]}
+    matched = _match_character_refs(refs, chars)
+    assert matched == {"Fox": ["/path/fox1.jpg", "/path/fox2.jpg", "/path/fox3.jpg"]}
 
 
 def test_match_partial_only_matched_returned():
     chars = _make_chars("Fox", "Owl")
-    refs = {"Fox": "/path/fox.jpg", "Unknown": "/path/x.jpg"}
+    refs = {"Fox": ["/path/fox.jpg"], "Unknown": ["/path/x.jpg"]}
     matched = _match_character_refs(refs, chars)
     # Fox matched directly. "Unknown" would go to LLM fallback.
     # Since we can't test LLM fallback without mocking the client,
     # we just verify the exact match part works.
     assert "Fox" in matched
-    assert matched["Fox"] == "/path/fox.jpg"
+    assert matched["Fox"] == ["/path/fox.jpg"]
 
 
 def test_match_no_characters():
-    refs = {"Fox": "/path/fox.jpg"}
+    refs = {"Fox": ["/path/fox.jpg"]}
     matched = _match_character_refs(refs, [])
     assert matched == {}

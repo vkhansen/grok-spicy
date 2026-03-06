@@ -230,8 +230,8 @@ class PipelineState(BaseModel):
     run_id: int | str | None = None
     config: PipelineConfig | None = None
     video_config: VideoConfig | None = None
-    character_refs: dict[str, str] = Field(default_factory=dict)
-    matched_refs: dict[str, str] = Field(default_factory=dict)
+    character_refs: dict[str, list[str]] = Field(default_factory=dict)
+    matched_refs: dict[str, list[str]] = Field(default_factory=dict)
 
 
 # ═══════════════════════════════════════════════════════════════

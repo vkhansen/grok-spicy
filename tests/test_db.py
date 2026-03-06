@@ -210,7 +210,15 @@ def test_insert_and_get_reference_images(conn):
     insert_reference_image(conn, run_id, "Fox", "fox.jpg", "output/refs/fox.jpg")
     insert_reference_image(conn, run_id, "Owl", "owl.jpg", "output/refs/owl.jpg")
     refs = get_reference_images(conn, run_id)
-    assert refs == {"Fox": "output/refs/fox.jpg", "Owl": "output/refs/owl.jpg"}
+    assert refs == {"Fox": ["output/refs/fox.jpg"], "Owl": ["output/refs/owl.jpg"]}
+
+
+def test_get_reference_images_multiple_per_character(conn):
+    run_id = insert_run(conn, "concept")
+    insert_reference_image(conn, run_id, "Fox", "fox1.jpg", "output/refs/fox1.jpg")
+    insert_reference_image(conn, run_id, "Fox", "fox2.jpg", "output/refs/fox2.jpg")
+    refs = get_reference_images(conn, run_id)
+    assert refs == {"Fox": ["output/refs/fox1.jpg", "output/refs/fox2.jpg"]}
 
 
 def test_get_reference_images_empty(conn):

@@ -41,7 +41,7 @@ def _run_generation_loop(
     character: Character,
     style: str,
     aspect_ratio: str,
-    reference_image_path: str | None,
+    reference_image_paths: list[str] | None,
     config: PipelineConfig,
     video_config: VideoConfig | None,
     *,
@@ -57,23 +57,31 @@ def _run_generation_loop(
     client = get_client()
     max_attempts = config.max_char_attempts
     threshold = config.consistency_threshold
-    mode = "stylize" if reference_image_path else "generate"
+    mode = "stylize" if reference_image_paths else "generate"
     best: dict = {"score": 0.0, "url": "", "path": ""}
     attempt = 0
 
     traits = (character.spicy_traits or None) if include_spicy_traits else None
 
+    # Pre-encode all reference images
+    ref_b64s: list[str] = []
+    if reference_image_paths:
+        ref_b64s = [
+            f"data:image/jpeg;base64,{to_base64(p)}" for p in reference_image_paths
+        ]
+
     for attempt in range(1, max_attempts + 1):
         logger.info(
-            "Character %r %sattempt %d/%d (mode=%s)",
+            "Character %r %sattempt %d/%d (mode=%s, refs=%d)",
             character.name,
             f"({label}) " if label else "",
             attempt,
             max_attempts,
             mode,
+            len(ref_b64s),
         )
 
-        if reference_image_path:
+        if reference_image_paths:
             prompt = character_stylize_prompt(
                 style,
                 character.visual_description,
@@ -81,12 +89,18 @@ def _run_generation_loop(
                 spicy_traits=traits,
             )
             logger.info("Stylize prompt: %s", prompt)
-            ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
-            sample_kw: dict[str, Any] = dict(
-                model=MODEL_IMAGE,
-                image_url=ref_b64,
-                aspect_ratio=aspect_ratio,
-            )
+            if len(ref_b64s) == 1:
+                sample_kw: dict[str, Any] = dict(
+                    model=MODEL_IMAGE,
+                    image_url=ref_b64s[0],
+                    aspect_ratio=aspect_ratio,
+                )
+            else:
+                sample_kw = dict(
+                    model=MODEL_IMAGE,
+                    image_urls=ref_b64s,
+                    aspect_ratio=aspect_ratio,
+                )
         else:
             prompt = character_generate_prompt(
                 style,
@@ -118,18 +132,19 @@ def _run_generation_loop(
 
         # Vision verify
         chat = client.chat.create(model=MODEL_REASONING)
-        if reference_image_path:
+        if reference_image_paths:
             vision_prompt = character_vision_stylize_prompt(character)
             logger.info(
                 "Vision verify (ref comparison, character=%r): %s",
                 character.name,
                 vision_prompt,
             )
+            ref_images = [image(b) for b in ref_b64s]
             chat.append(
                 user(
                     vision_prompt,
                     image(img.url),
-                    image(ref_b64),
+                    *ref_images,
                 )
             )
         else:
@@ -179,7 +194,7 @@ def _run_enhancement_loop(
     character: Character,
     style: str,
     aspect_ratio: str,
-    reference_image_path: str,
+    reference_image_paths: list[str],
     base_url: str,
     enhancements: str,
     config: PipelineConfig,
@@ -197,7 +212,9 @@ def _run_enhancement_loop(
     best: dict = {"score": 0.0, "url": "", "path": ""}
     attempt = 0
 
-    ref_b64 = f"data:image/jpeg;base64,{to_base64(reference_image_path)}"
+    ref_b64s = [
+        f"data:image/jpeg;base64,{to_base64(p)}" for p in reference_image_paths
+    ]
 
     for attempt in range(1, max_attempts + 1):
         logger.info(
@@ -245,7 +262,7 @@ def _run_enhancement_loop(
             f"{config.run_dir}/characters/{character.name}_enhanced_v{attempt}.jpg",
         )
 
-        # Vision verify — compare enhanced vs base vs reference
+        # Vision verify — compare enhanced vs base vs all references
         chat = client.chat.create(model=MODEL_REASONING)
         vision_prompt = character_vision_enhance_prompt(character, enhancements)
         logger.info(
@@ -253,12 +270,13 @@ def _run_enhancement_loop(
             character.name,
             vision_prompt,
         )
+        ref_images = [image(b) for b in ref_b64s]
         chat.append(
             user(
                 vision_prompt,
                 image(img.url),  # Image 1: enhanced portrait
                 image(base_b64),  # Image 2: base portrait
-                image(ref_b64),  # Image 3: original reference
+                *ref_images,  # Images 3+: original reference(s)
             )
         )
         _, score = chat.parse(ConsistencyScore)
@@ -298,7 +316,7 @@ def generate_character_sheet(
     character: Character,
     style: str,
     aspect_ratio: str,
-    reference_image_path: str | None = None,
+    reference_image_paths: list[str] | None = None,
     enhancements: str | None = None,
     config: PipelineConfig | None = None,
     video_config: VideoConfig | None = None,
@@ -306,10 +324,10 @@ def generate_character_sheet(
     """Generate a verified character reference portrait.
 
     Three cases:
-      1. No reference image  -> generate from visual_description text
-      2. Reference image, no enhancements -> stylize from photo
-      3. Reference image + enhancements -> two-pass: base from photo, then
-         enhance with outfit/modification changes
+      1. No reference images -> generate from visual_description text
+      2. Reference image(s), no enhancements -> stylize from photo(s)
+      3. Reference image(s) + enhancements -> two-pass: base from photo(s),
+         then enhance with outfit/modification changes
 
     The enhanced portrait (case 3) or single portrait (cases 1/2) is what
     flows downstream into keyframes and video generation.
@@ -317,7 +335,7 @@ def generate_character_sheet(
     if config is None:
         config = PipelineConfig()
 
-    has_ref = reference_image_path is not None
+    has_ref = bool(reference_image_paths)
     has_enhance = bool(enhancements)
     if has_ref and has_enhance:
         mode = "stylize+enhance"
@@ -327,9 +345,10 @@ def generate_character_sheet(
         mode = "generate"
 
     logger.info(
-        "Character sheet starting: name=%r, mode=%s, threshold=%.2f",
+        "Character sheet starting: name=%r, mode=%s, refs=%d, threshold=%.2f",
         character.name,
         mode,
+        len(reference_image_paths) if reference_image_paths else 0,
         config.consistency_threshold,
     )
 
@@ -339,7 +358,7 @@ def generate_character_sheet(
             character,
             style,
             aspect_ratio,
-            reference_image_path,
+            reference_image_paths,
             enhancements,
             config,
             video_config,
@@ -354,7 +373,7 @@ def generate_character_sheet(
             character,
             style,
             aspect_ratio,
-            reference_image_path,
+            reference_image_paths,
             config,
             video_config,
             include_spicy_traits=False,
@@ -378,7 +397,7 @@ def generate_character_sheet(
             character,
             style,
             aspect_ratio,
-            reference_image_path,
+            reference_image_paths,
             base["url"],
             enhancements,
             config,
@@ -410,7 +429,7 @@ def generate_character_sheet(
         character,
         style,
         aspect_ratio,
-        reference_image_path,
+        reference_image_paths,
         config,
         video_config,
     )
@@ -436,7 +455,7 @@ def _dry_run(
     character: Character,
     style: str,
     aspect_ratio: str,
-    reference_image_path: str | None,
+    reference_image_paths: list[str] | None,
     enhancements: str | None,
     config: PipelineConfig,
     video_config: VideoConfig | None,
@@ -445,7 +464,7 @@ def _dry_run(
     """Write prompt files for dry-run mode and return a mock CharacterAsset."""
     from grok_spicy.dry_run import write_prompt
 
-    if reference_image_path:
+    if reference_image_paths:
         gen_prompt = character_stylize_prompt(
             style,
             character.visual_description,
@@ -458,7 +477,7 @@ def _dry_run(
             f"{character.name}_stylize" + ("_base" if enhancements else ""),
             model=MODEL_IMAGE,
             prompt=gen_prompt,
-            image_refs=[reference_image_path],
+            image_refs=reference_image_paths,
             api_params={"aspect_ratio": aspect_ratio},
             run_dir=config.run_dir,
         )
@@ -488,7 +507,7 @@ def _dry_run(
     )
 
     # Write enhancement prompts if Case 3
-    if enhancements and reference_image_path:
+    if enhancements and reference_image_paths:
         enhance_gen = character_enhance_prompt(
             style,
             character.visual_description,

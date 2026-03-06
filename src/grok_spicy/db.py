@@ -250,13 +250,16 @@ def insert_reference_image(
 def get_reference_images(
     conn: sqlite3.Connection,
     run_id: int,
-) -> dict[str, str]:
-    """Return {character_name: stored_path} for a run."""
+) -> dict[str, list[str]]:
+    """Return {character_name: [stored_path, ...]} for a run."""
     rows = conn.execute(
         "SELECT character_name, stored_path FROM reference_images WHERE run_id = ?",
         (run_id,),
     ).fetchall()
-    return {r["character_name"]: r["stored_path"] for r in rows}
+    result: dict[str, list[str]] = {}
+    for r in rows:
+        result.setdefault(r["character_name"], []).append(r["stored_path"])
+    return result
 
 
 # ─── Asset upserts ────────────────────────────────────────────

@@ -78,7 +78,7 @@ def character_generate_prompt(
 def character_vision_stylize_prompt(character: Character) -> str:
     prompt = (
         f"Score how well the first image (generated portrait) preserves "
-        f"the person's likeness from the second image (reference photo). "
+        f"the person's likeness from the reference photo(s) (images 2+). "
         f"Be strict on: facial features, face shape, hair color/style, "
         f"eye color, skin tone, build, distinguishing marks.\n\n"
         f"Also check these appearance details: "
@@ -141,7 +141,7 @@ def character_vision_enhance_prompt(
     """Vision check for enhancement pass: verify likeness AND enhancement presence."""
     prompt = (
         f"Image 1 is the enhanced portrait. Image 2 is the base portrait "
-        f"(before enhancements). Image 3 is the original reference photo.\n\n"
+        f"(before enhancements). Images 3+ are the original reference photo(s).\n\n"
         f"Score how well the enhanced portrait:\n"
         f"1. Preserves the person's facial features and likeness from the "
         f"reference photo (be strict — face shape, eyes, nose, skin tone)\n"

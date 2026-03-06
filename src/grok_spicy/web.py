@@ -135,7 +135,7 @@ async def create_run(
     run_id = insert_run(conn, concept)
 
     # Save uploaded reference images
-    ref_map: dict[str, str] = {}
+    ref_map: dict[str, list[str]] = {}
     for name, upload in [(ref_name_1, ref_image_1), (ref_name_2, ref_image_2)]:
         name = name.strip() if name else ""
         if name and upload and upload.filename:
@@ -146,7 +146,7 @@ async def create_run(
             with open(path, "wb") as f:
                 f.write(content)
             insert_reference_image(conn, run_id, name, upload.filename, path)
-            ref_map[name] = path
+            ref_map.setdefault(name, []).append(path)
             logger.info(
                 "Saved reference image: run=%d, name=%r, file=%r, size=%d bytes",
                 run_id,
@@ -165,7 +165,7 @@ async def create_run(
 def _start_pipeline_thread(
     video_config: Any,
     run_id: int,
-    ref_map: dict[str, str],
+    ref_map: dict[str, list[str]],
 ) -> None:
     """Launch the pipeline in a daemon thread."""
     from grok_spicy.observer import WebObserver

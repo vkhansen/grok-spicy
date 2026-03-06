@@ -45,35 +45,38 @@ def _notify(observer: PipelineObserver, method: str, *args: object) -> None:
 
 
 def _match_character_refs(
-    character_refs: dict[str, str],
+    character_refs: dict[str, list[str]],
     characters: list[Character],
     dry_run: bool = False,
-) -> dict[str, str]:
+) -> dict[str, list[str]]:
     """Map uploaded reference names to generated character names.
 
-    Returns {Character.name: file_path} for matched characters.
+    Returns {Character.name: [file_path, ...]} for matched characters.
     """
     if not character_refs:
         logger.debug("No character references to match")
         return {}
 
     char_names = {c.name for c in characters}
-    matched: dict[str, str] = {}
+    matched: dict[str, list[str]] = {}
 
     # Phase 1: exact match (case-insensitive)
-    unmatched_refs: dict[str, str] = {}
-    for ref_label, ref_path in character_refs.items():
+    unmatched_refs: dict[str, list[str]] = {}
+    for ref_label, ref_paths in character_refs.items():
         found = False
         for cname in char_names:
             if ref_label.lower() == cname.lower():
-                matched[cname] = ref_path
+                matched[cname] = ref_paths
                 logger.info(
-                    "Ref match (exact): label=%r → character=%r", ref_label, cname
+                    "Ref match (exact): label=%r → character=%r (%d images)",
+                    ref_label,
+                    cname,
+                    len(ref_paths),
                 )
                 found = True
                 break
         if not found:
-            unmatched_refs[ref_label] = ref_path
+            unmatched_refs[ref_label] = ref_paths
             logger.debug("Ref label %r had no exact match", ref_label)
 
     logger.info(
@@ -87,12 +90,12 @@ def _match_character_refs(
 
     # Phase 2: substring matching (cheap heuristic before LLM)
     unmatched_char_names = char_names - set(matched.keys())
-    still_unmatched: dict[str, str] = {}
-    for ref_label, ref_path in unmatched_refs.items():
+    still_unmatched: dict[str, list[str]] = {}
+    for ref_label, ref_paths in unmatched_refs.items():
         found = False
         for cname in unmatched_char_names:
             if ref_label.lower() in cname.lower() or cname.lower() in ref_label.lower():
-                matched[cname] = ref_path
+                matched[cname] = ref_paths
                 logger.info(
                     "Ref match (substring): label=%r → character=%r",
                     ref_label,
@@ -101,7 +104,7 @@ def _match_character_refs(
                 found = True
                 break
         if not found:
-            still_unmatched[ref_label] = ref_path
+            still_unmatched[ref_label] = ref_paths
 
     if not still_unmatched:
         logger.info("All refs matched after substring phase")
@@ -169,14 +172,17 @@ def _match_character_refs(
             )
 
     # Warn about any refs that remain unmatched after all phases
-    final_matched_paths = set(matched.values())
-    for ref_label, ref_path in character_refs.items():
-        if ref_path not in final_matched_paths:
-            logger.warning(
-                "Reference image %r (%s) could not be matched to any character",
-                ref_label,
-                ref_path,
-            )
+    final_matched_paths = set()
+    for paths in matched.values():
+        final_matched_paths.update(paths)
+    for ref_label, ref_paths in character_refs.items():
+        for ref_path in ref_paths:
+            if ref_path not in final_matched_paths:
+                logger.warning(
+                    "Reference image %r (%s) could not be matched to any character",
+                    ref_label,
+                    ref_path,
+                )
 
     logger.info("Final ref matching result: %d matched total", len(matched))
     return matched
@@ -191,7 +197,7 @@ def _match_character_refs(
 def video_pipeline(
     video_config: VideoConfig,
     observer: PipelineObserver | None = None,
-    character_refs: dict[str, str] | None = None,
+    character_refs: dict[str, list[str]] | None = None,
     config: PipelineConfig | None = None,
 ) -> str:
     """End-to-end video generation pipeline.
@@ -237,32 +243,39 @@ def video_pipeline(
     for cfg_char in video_config.characters:
         imgs = resolved_images.get(cfg_char.id, [])
         if imgs and cfg_char.name not in character_refs:
-            first_img = imgs[0]
-            if not first_img.startswith(("http://", "https://")):
-                character_refs[cfg_char.name] = first_img
-                logger.info(
-                    "Config: added local ref image for %r: %s",
-                    cfg_char.name,
-                    first_img,
-                )
-            elif not config.dry_run:
-                safe = cfg_char.name.replace(" ", "_")
-                dest = f"output/staging/{staging_id}/references/{safe}_config.jpg"
-                try:
-                    download(first_img, dest)
-                    character_refs[cfg_char.name] = dest
+            # Take up to 3 reference images per character
+            paths: list[str] = []
+            for idx, img_src in enumerate(imgs[:3]):
+                if not img_src.startswith(("http://", "https://")):
+                    paths.append(img_src)
                     logger.info(
-                        "Config: downloaded ref image for %r: %s",
+                        "Config: added local ref image for %r [%d]: %s",
                         cfg_char.name,
-                        dest,
+                        idx,
+                        img_src,
                     )
-                except Exception:
-                    logger.warning(
-                        "Failed to download config image for %r: %s",
-                        cfg_char.name,
-                        first_img,
-                        exc_info=True,
-                    )
+                elif not config.dry_run:
+                    safe = cfg_char.name.replace(" ", "_")
+                    dest = f"output/staging/{staging_id}/references/{safe}_config_{idx}.jpg"
+                    try:
+                        download(img_src, dest)
+                        paths.append(dest)
+                        logger.info(
+                            "Config: downloaded ref image for %r [%d]: %s",
+                            cfg_char.name,
+                            idx,
+                            dest,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to download config image for %r [%d]: %s",
+                            cfg_char.name,
+                            idx,
+                            img_src,
+                            exc_info=True,
+                        )
+            if paths:
+                character_refs[cfg_char.name] = paths
 
     run_id = observer.on_run_start(concept)
     logger.info("Run ID assigned: %d", run_id)
@@ -286,16 +299,23 @@ def video_pipeline(
         os.makedirs(run_refs_dir, exist_ok=True)
         import shutil
 
-        updated_refs: dict[str, str] = {}
-        for ref_name, ref_path in character_refs.items():
-            dest = os.path.join(run_refs_dir, os.path.basename(ref_path))
-            if os.path.isfile(ref_path):
-                shutil.copy2(ref_path, dest)
-                updated_refs[ref_name] = dest
-                logger.debug("Relocated ref %r: %s → %s", ref_name, ref_path, dest)
-            else:
-                updated_refs[ref_name] = ref_path
-                logger.debug("Ref %r path not found, keeping: %s", ref_name, ref_path)
+        updated_refs: dict[str, list[str]] = {}
+        for ref_name, ref_paths in character_refs.items():
+            new_paths: list[str] = []
+            for ref_path in ref_paths:
+                dest = os.path.join(run_refs_dir, os.path.basename(ref_path))
+                if os.path.isfile(ref_path):
+                    shutil.copy2(ref_path, dest)
+                    new_paths.append(dest)
+                    logger.debug(
+                        "Relocated ref %r: %s → %s", ref_name, ref_path, dest
+                    )
+                else:
+                    new_paths.append(ref_path)
+                    logger.debug(
+                        "Ref %r path not found, keeping: %s", ref_name, ref_path
+                    )
+            updated_refs[ref_name] = new_paths
         character_refs = updated_refs
 
     try:
@@ -394,7 +414,7 @@ def video_pipeline(
                 c,
                 plan.style,
                 plan.aspect_ratio,
-                reference_image_path=matched_refs.get(c.name),
+                reference_image_paths=matched_refs.get(c.name),
                 enhancements=_enhancements.get(c.name),
                 config=config,
                 video_config=video_config,
