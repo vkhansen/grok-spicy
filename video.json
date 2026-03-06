@@ -4,20 +4,19 @@
     "enabled": true,
     "enabled_modifiers": [
       "dark_fantasy",
-      "anime_cel_shading",
       "dramatic_edge_lighting",
       "fluid_motion_physics",
       "erotic_tension_particles"
     ],
     "intensity": "high",
-    "global_prefix": "hyper-detailed anime style, dark erotic fantasy cinema still, cel-shaded dramatic lighting, surreal fetish performance art, glowing edge highlights, exaggerated anime proportions, intense shadow play, ",
-    "extreme_emphasis": "(masterpiece:1.3), (best quality:1.2), (intricate anime musculature:1.2)"
+    "global_prefix": "hyper-detailed photorealistic, dark erotic fantasy cinema still, dramatic cinematic lighting, surreal fetish performance art, sharp edge highlights, realistic human proportions, intense shadow play, ",
+    "extreme_emphasis": "(masterpiece:1.3), (best quality:1.2), (intricate realistic musculature:1.2)"
   },
   "characters": [
     {
       "id": "char_dom",
       "name": "Rei",
-      "description": "tall evil-looking anime Japanese/Thai dominant — runway-lean hardbody extremely muscular, large high firm breasts, razor V-cut abs, sinewy coiled limbs, thin black leather straps crossing chest, high flowing ponytail, angular fierce face, oversized piercing glowing eyes, commanding lips, predatory unrestrained poise, exaggerated anime posture",
+      "description": "tall evil-looking Japanese/Thai dominant woman — runway-lean hardbody extremely muscular, large high firm breasts, razor-sharp V-cut abs, sinewy coiled limbs, thin black leather straps crossing chest, high flowing ponytail, angular fierce face, piercing intense eyes, commanding lips, predatory unrestrained poise, powerful confident posture",
       "images": [
         "source_images/miho2.jpg",
         "source_images/miho1.jpg"
@@ -27,7 +26,7 @@
     {
       "id": "char_sub",
       "name": "Mina",
-      "description": "smaller skinny anime Thai submissive — elongated zero-fat hardbody, substantial perky heavy breasts with weighted clamps and short chains, flat subtly heaving abs, extremely thick tall spiked collar covering entire neck with large spikes, horse-type bit-gag stretching glossy lips, twin pigtails fanning submissively, armbinder pinning wrists behind back, short hobble chain, faint violet-blue mottling on throat and cheeks, glassy vacant large reflective anime eyes",
+      "description": "smaller skinny Thai submissive woman — elongated zero-fat hardbody, substantial perky heavy breasts with weighted clamps and short chains, flat subtly heaving abs, extremely thick tall spiked collar covering entire neck with large spikes, horse-type bit-gag stretching glossy lips, twin pigtails falling submissively, armbinder pinning wrists behind back, short hobble chain, faint violet-blue mottling on throat and cheeks, glassy vacant large reflective eyes",
       "images": [
         "source_images/julia1.jpg",
         "source_images/julia0.jpg",
@@ -38,31 +37,31 @@
     }
   ],
   "default_video": {
-    "scene": "dimly spotlighted ancient stone dungeon, cold moisture dripping on walls, harsh beams carving sharp shadows, glistening bare skin with cel-shaded highlights",
-    "motion": "fluid exaggerated anime physics, bouncy breast motion, rippling muscle waves, speed lines, motion blur on sudden movements",
+    "scene": "dimly spotlighted ancient stone dungeon, cold moisture dripping on walls, harsh beams carving sharp shadows, glistening bare skin with realistic highlights and subsurface scattering",
+    "motion": "fluid realistic human physics, natural breast motion, rippling muscle contractions, realistic water and liquid dynamics",
     "audio_cues": "wet gurgles, choked swallows, metallic chain clinks, echoing stone reverb, heavy breathing, dripping liquid"
   },
   "narrative_core": {
     "restraint_rule": "All restraints (armbinder, hobble chain, spiked collar, bit-gag, nipple rings, weighted clamps) must remain completely in place and visible throughout every frame. No removal or loosening allowed.",
     "escalation_arc": "Progressive intensification: initial forced positioning → repeated dunks with brief air gasps → final prolonged full immersion until complete exhaustion and surrender",
-    "style_directive": "hyper-detailed dark erotic anime illustration, dramatic low-key lighting with harsh spotlights, cel-shading, glowing muscle outlines, refractive liquid effects, exaggerated anime expressions and body physics, surreal fetish atmosphere"
+    "style_directive": "hyper-detailed dark erotic photorealistic cinema, dramatic low-key lighting with harsh spotlights, realistic skin textures and pores, refractive liquid effects, lifelike expressions and body physics, intense fetish atmosphere"
   },
   "story_plan": {
     "title": "Rancid Submission",
-    "style": "anime cinematic, dark fantasy erotic, hyper-detailed cel-shaded anime, dramatic spotlighting, surreal motion",
+    "style": "photorealistic cinematic, dark fantasy erotic, hyper-detailed realistic rendering, dramatic spotlighting, intense motion",
     "aspect_ratio": "16:9",
     "color_palette": "cold stone grays and blues, warm harsh spotlight yellows, glistening skin highlights, cyan-violet mottling on skin, opaque off-white creamy liquid, black leather accents",
     "characters": [
       {
         "name": "Rei",
         "role": "dominant",
-        "visual_description": "tall evil-looking anime Japanese/Thai dominant — runway-lean hardbody extremely muscular, large high firm breasts, razor V-cut abs, sinewy coiled limbs, thin black leather straps crossing chest, high flowing ponytail, angular fierce face, oversized piercing glowing eyes, commanding lips, predatory unrestrained poise, exaggerated anime posture",
+        "visual_description": "tall evil-looking Japanese/Thai dominant woman — runway-lean hardbody extremely muscular, large high firm breasts, razor-sharp V-cut abs, sinewy coiled limbs, thin black leather straps crossing chest, high flowing ponytail, angular fierce face, piercing intense eyes, commanding lips, predatory unrestrained poise, powerful confident posture",
         "personality_cues": ["cruel", "commanding", "triumphant", "predatory"]
       },
       {
         "name": "Mina",
         "role": "submissive",
-        "visual_description": "smaller skinny anime Thai submissive — elongated zero-fat hardbody, substantial perky heavy breasts with weighted clamps and short chains, flat subtly heaving abs, extremely thick tall spiked collar covering entire neck with large spikes, horse-type bit-gag stretching glossy lips, twin pigtails fanning submissively, armbinder pinning wrists behind back, short hobble chain, faint violet-blue mottling on throat and cheeks, glassy vacant large reflective anime eyes",
+        "visual_description": "smaller skinny Thai submissive woman — elongated zero-fat hardbody, substantial perky heavy breasts with weighted clamps and short chains, flat subtly heaving abs, extremely thick tall spiked collar covering entire neck with large spikes, horse-type bit-gag stretching glossy lips, twin pigtails falling submissively, armbinder pinning wrists behind back, short hobble chain, faint violet-blue mottling on throat and cheeks, glassy vacant large reflective eyes",
         "personality_cues": ["helpless", "obedient", "panicked", "exhausted", "vacant"]
       }
     ],
@@ -76,7 +75,7 @@
         "camera": "dynamic orbit (front → side → rear) ending in locked overhead shot",
         "mood": "tense, predatory, impending violation, thick atmosphere",
         "action": "Rei grips Mina's pigtails, yanks head back into dramatic arch, forces her down to all fours, then presses face toward the wide shallow bowl of thick off-white liquid",
-        "prompt_summary": "Rei towers dominantly, fists locked in Mina's pigtails, arching and pressing her masked face downward toward brimming bowl of opaque creamy liquid",
+        "prompt_summary": "Rei towers dominantly, fists locked in Mina's pigtails, arching and pressing her gagged face downward toward brimming bowl of opaque creamy liquid",
         "duration_seconds": 6,
         "transition": "slow fade"
       },
@@ -88,7 +87,7 @@
         "setting": "close stone ledge with wide shallow bowl of churning off-white liquid",
         "camera": "intimate close side-angle push-in, tightening on throat and face, occasional low throat close-ups",
         "mood": "intense distress, wet chaos, power imbalance",
-        "action": "Rei yanks pigtails downward plunging masked face into liquid, brief pulls up for gasps, repeated deeper dunks, forced swallowing with visible throat pulses and spilling droplets",
+        "action": "Rei yanks pigtails downward plunging gagged face into liquid, brief pulls up for gasps, repeated deeper dunks, forced swallowing with visible throat pulses and spilling droplets",
         "prompt_summary": "Rei violently dunks Mina's face into opaque creamy liquid, pulls up for gasping coughs, then slams back under; throat convulses with audible gulps and cyan mottling",
         "duration_seconds": 6,
         "transition": "hard cut"
