@@ -121,6 +121,19 @@ def is_moderated(url: str) -> bool:
     return MODERATED_URL_SENTINEL in url
 
 
+def _is_result_moderated(result: Any) -> bool:
+    """Check if a generation result was moderation-blocked.
+
+    Handles two SDK behaviors:
+    - Images: result.url contains MODERATED_URL_SENTINEL string
+    - Videos: result.url raises ValueError when moderated
+    """
+    try:
+        return is_moderated(result.url)
+    except (ValueError, AttributeError):
+        return True
+
+
 def reword_prompt(prompt: str) -> str:
     """Use Grok to rephrase a prompt that was blocked by content moderation.
 
@@ -170,12 +183,12 @@ def generate_with_moderation_retry(
     """
     result = generate_fn(prompt=prompt, **generate_kw)
     for _rw in range(max_rewords):
-        if not is_moderated(result.url):
+        if not _is_result_moderated(result):
             return result, prompt, False
         logger.warning("Moderation hit (reword %d/%d)", _rw + 1, max_rewords)
         prompt = reword_prompt(prompt)
         result = generate_fn(prompt=prompt, **generate_kw)
-    still_moderated = is_moderated(result.url)
+    still_moderated = _is_result_moderated(result)
     return result, prompt, still_moderated
 
 

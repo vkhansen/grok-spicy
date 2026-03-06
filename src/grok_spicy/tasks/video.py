@@ -149,8 +149,19 @@ def generate_scene_video(
         client.video.generate, vid_prompt, **vid_kw
     )
     if still_moderated:
-        raise RuntimeError(
-            f"Scene {scene.scene_id}: video still moderated after rewords"
+        logger.warning(
+            "Scene %d: video still moderated after rewords — skipping scene",
+            scene.scene_id,
+        )
+        return VideoAsset(
+            scene_id=scene.scene_id,
+            video_url="moderated://skipped",
+            video_path=f"{config.run_dir}/videos/scene_{scene.scene_id}_skipped.mp4",
+            duration=float(scene.duration_seconds),
+            first_frame_path="",
+            last_frame_path="",
+            consistency_score=0.0,
+            correction_passes=0,
         )
 
     video_path = f"{config.run_dir}/videos/scene_{scene.scene_id}.mp4"

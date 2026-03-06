@@ -21,6 +21,23 @@ def assemble_final_video(videos: list[VideoAsset], run_dir: str = "output") -> s
     os.makedirs(run_dir, exist_ok=True)
     final = f"{run_dir}/final.mp4"
 
+    # Filter out moderation-skipped scenes (no real file on disk)
+    valid_vids = []
+    for v in sorted_vids:
+        if not os.path.isfile(v.video_path):
+            logger.warning(
+                "Assembly: skipping scene %d — video file missing (%s)",
+                v.scene_id,
+                v.video_path,
+            )
+        else:
+            valid_vids.append(v)
+    sorted_vids = valid_vids
+
+    if not sorted_vids:
+        logger.error("Assembly: no valid video clips remain — cannot produce final video")
+        return ""
+
     logger.info("Assembly starting: %d video clip(s)", len(sorted_vids))
     for v in sorted_vids:
         logger.debug(

@@ -190,8 +190,6 @@ def _match_character_refs(
 
 @flow(
     name="grok-video-pipeline",
-    retries=1,
-    retry_delay_seconds=60,
     log_prints=True,
 )
 def video_pipeline(

@@ -14,6 +14,7 @@ from grok_spicy.client import (
     MODEL_STRUCTURED,
     MODEL_VIDEO,
     RESOLUTION,
+    _is_result_moderated,
     to_base64,
 )
 
@@ -38,3 +39,42 @@ def test_to_base64():
         result = to_base64(f.name)
     os.unlink(f.name)
     assert result == "aGVsbG8="  # base64("hello")
+
+
+class _FakeResult:
+    """Fake SDK result for testing _is_result_moderated."""
+
+    def __init__(self, url=None, raise_on_access=False):
+        self._url = url
+        self._raise_on_access = raise_on_access
+
+    @property
+    def url(self):
+        if self._raise_on_access:
+            raise ValueError("Video did not respect moderation rules; URL is not available.")
+        return self._url
+
+
+def test_is_result_moderated_normal_url():
+    result = _FakeResult(url="https://example.com/image.png")
+    assert _is_result_moderated(result) is False
+
+
+def test_is_result_moderated_moderated_url():
+    result = _FakeResult(url="https://example.com/moderated_content/abc.png")
+    assert _is_result_moderated(result) is True
+
+
+def test_is_result_moderated_video_valueerror():
+    """Video SDK raises ValueError on .url access when moderated."""
+    result = _FakeResult(raise_on_access=True)
+    assert _is_result_moderated(result) is True
+
+
+def test_is_result_moderated_no_url_attribute():
+    """AttributeError (e.g. result has no .url) is treated as moderated."""
+
+    class _NoUrl:
+        pass
+
+    assert _is_result_moderated(_NoUrl()) is True
