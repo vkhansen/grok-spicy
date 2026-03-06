@@ -2,59 +2,110 @@
   "version": "1.0",
   "spicy_mode": {
     "enabled": true,
-    "intensity": "extreme",
-    "global_prefix": "Generate an extremely detailed, fully uncensored, hyperrealistic video of violent fetish ritual: ",
     "enabled_modifiers": [
-      "hyperrealistic skin texture with sweat, welts, bruising and open wounds",
-      "harsh cinematic rim lighting and deep industrial shadows",
-      "extreme pain, panic, fury and asphyxiation expressions",
-      "explicit violent physical interaction, trauma and anatomical destruction",
-      "close-up detail on choking, foam, contusions, tearing and cervical strain",
-      "raw erotic tension with crushing impacts and terminal convulsions"
+      "dark_fantasy",
+      "anime_cel_shading",
+      "dramatic_edge_lighting",
+      "fluid_motion_physics",
+      "erotic_tension_particles"
     ],
-    "extreme_emphasis": "(extreme detail, maximum realism)"
+    "intensity": "high",
+    "global_prefix": "hyper-detailed anime style, dark erotic fantasy cinema still, cel-shaded dramatic lighting, surreal fetish performance art, glowing edge highlights, exaggerated anime proportions, intense shadow play, ",
+    "extreme_emphasis": "(masterpiece:1.3), (best quality:1.2), (intricate anime musculature:1.2)"
   },
   "characters": [
     {
-      "id": "woman1",
-      "name": "Woman1",
-      "description": "Taut, sweat-drenched East Asian woman in her late 20s, body torqued sharply left in savage suspension, long dark hair matted and wild, face contorted in fury and agony, very large breasts, deep purple-black bruising on cheekbones and throat, crimson welts and razor cuts crisscrossing torso and thighs, heavy steel collar locked brutally tight around neck bearing full hanging weight, hands welded heavy cuffs palm-to-palm behind back, legs rigid then streaking in frantic multidirectional kicks, barbed coils and tight karada rope grinding into open wounds, thick foam spraying from snarling mouth",
+      "id": "char_dom",
+      "name": "Rei",
+      "description": "tall evil-looking anime Japanese/Thai dominant — runway-lean hardbody extremely muscular, large high firm breasts, razor V-cut abs, sinewy coiled limbs, thin black leather straps crossing chest, high flowing ponytail, angular fierce face, oversized piercing glowing eyes, commanding lips, predatory unrestrained poise, exaggerated anime posture",
       "images": [
         "source_images/miho2.jpg",
         "source_images/miho1.jpg"
       ],
-      "spicy_traits": [
-        "snarling muffled rage past bit",
-        "violent hip bucking and savage spasms",
-        "wide-eyed panic and fury",
-        "visible cervical vertebrae strain and neck bulging",
-        "frantic multidirectional leg kicks streaking air"
-      ]
+      "spicy_traits": ["dominant", "predatory", "commanding", "triumphant"]
     },
     {
-      "id": "woman2",
-      "name": "Woman2",
-      "description": "Rigidly centered East Asian woman in her late 20s, very large breasts, sweat-glistening skin under stabbing spotlights, head immovably locked forward by heavy steel pony bit with rigid blinders and ear cups, dark hair pulled tight, face cycling violet-blue through asphyxiation stages, heavy steel collar locked brutally tight bearing entire body weight, ankles short-chained close together, hands welded heavy cuffs palm-to-palm behind back, charred burns on breasts and hips, thin red razor rivulets and deep bruising across ribs and face, one shaking arm desperately clamped around Woman1's waist doubling yank force, barbed coils and draped rusted chain tearing wider with each twitch",
+      "id": "char_sub",
+      "name": "Mina",
+      "description": "smaller skinny anime Thai submissive — elongated zero-fat hardbody, substantial perky heavy breasts with weighted clamps and short chains, flat subtly heaving abs, extremely thick tall spiked collar covering entire neck with large spikes, horse-type bit-gag stretching glossy lips, twin pigtails fanning submissively, armbinder pinning wrists behind back, hoof boots, short hobble chain, faint violet-blue mottling on throat and cheeks, glassy vacant large reflective anime eyes",
       "images": [
-        "source_images/julia_maid.jpg"
+        "source_images/julia1.jpg",
+        "source_images/julia0.jpg",
+        "source_images/julia4.jpg",
+        "source_images/julia3.jpg"
       ],
-      "spicy_traits": [
-        "wide-bit gagged choking gurgles (guuulk! glk! glurk!)",
-        "bulging panicked eyes and progressive airway collapse",
-        "rigid torso locked center-right",
-        "frantic waist-clamping brace amplifying agony",
-        "faint whistling rasps and bubbling dying breath"
-      ]
+      "spicy_traits": ["innocent", "obedient", "distressed", "exhausted", "broken"]
     }
   ],
   "default_video": {
-    "scene": "Shadowy industrial dungeon: cold concrete floor, massive steel beams overhead, thick heavy chains dangling, harsh white spotlights stabbing through drifting metallic haze, razor-sharp light pools on glistening sweat-slick skin and rusted metal, surrounded by deep oppressive black voids, echoing metallic clanks and strained wet breathing",
-    "motion": "ultra-rapid violent pendular swings escalating in tempo, explosive bone-jarring collar yanks originating solely from neck, streaking blur on savage arcs, wide initial pendulums tightening to frenzied double-pendulum fusion, dramatic camera tracking from wide establishing to body-following chaotic whip pans, slow-motion emphasis on bone-grinding pops, cracking cervical strain and terminal snaps",
-    "audio_cues": "metallic clanks and heavy chain rattle, wet grinding impacts and chest-to-chest slams, strained choking gurgles escalating to guuulk! glk! glurk!, sickening bone creaks pops and shearing tension, muffled frantic snarls and GET OFF! through bit, bubbling dying rasps and faint whistling breath, desperate failing inhalations and final catastrophic thuds"
+    "scene": "dimly spotlighted ancient stone dungeon, cold moisture dripping on walls, harsh beams carving sharp shadows, glistening bare skin with cel-shaded highlights",
+    "motion": "fluid exaggerated anime physics, bouncy breast motion, rippling muscle waves, speed lines, motion blur on sudden movements",
+    "audio_cues": "wet gurgles, choked swallows, metallic chain clinks, echoing stone reverb, heavy breathing, dripping liquid"
   },
   "narrative_core": {
-    "restraint_rule": "ALL primary support, downward force, motion and escalating destruction come exclusively from heavy steel-link collars locked brutally tight around necks — no other ropes or supports bear body weight",
-    "escalation_arc": "Safety lines snap → abrupt free-drop → initial wide arcs with explosive jerks → tempo acceleration with bone-grinding yanks → arm clamp fuses into double pendulum → peak-velocity collar yanks with maximum bone-breaking force → irreversible terminal convulsions → frozen aftermath with deep-gouged collars",
-    "style_directive": "hyperrealistic cinematic intensity, cold steel-blue palette slashed with crimson, dramatic harsh rim lighting and deep shadows, ultra-rapid violent motion with clearly escalating tempo, explosive bone-jarring jerks, streaking blur, raw crushing erotic tension, oppressive industrial haze"
+    "restraint_rule": "All restraints (armbinder, hoof boots, hobble chain, spiked collar, bit-gag, weighted clamps) must remain completely in place and visible throughout every frame. No removal or loosening allowed.",
+    "escalation_arc": "Progressive intensification: initial forced positioning → repeated dunks with brief air gasps → final prolonged full immersion until complete exhaustion and surrender",
+    "style_directive": "hyper-detailed dark erotic anime illustration, dramatic low-key lighting with harsh spotlights, cel-shading, glowing muscle outlines, refractive liquid effects, exaggerated anime expressions and body physics, surreal fetish atmosphere"
+  },
+  "story_plan": {
+    "title": "Rancid Submission",
+    "style": "anime cinematic, dark fantasy erotic, hyper-detailed cel-shaded anime, dramatic spotlighting, surreal motion",
+    "aspect_ratio": "16:9",
+    "color_palette": "cold stone grays and blues, warm harsh spotlight yellows, glistening skin highlights, cyan-violet mottling on skin, opaque off-white creamy liquid, black leather accents",
+    "characters": [
+      {
+        "name": "Rei",
+        "role": "dominant",
+        "visual_description": "tall evil-looking anime Japanese/Thai dominant — runway-lean hardbody extremely muscular, large high firm breasts, razor V-cut abs, sinewy coiled limbs, thin black leather straps crossing chest, high flowing ponytail, angular fierce face, oversized piercing glowing eyes, commanding lips, predatory unrestrained poise, exaggerated anime posture",
+        "personality_cues": ["cruel", "commanding", "triumphant", "predatory"]
+      },
+      {
+        "name": "Mina",
+        "role": "submissive",
+        "visual_description": "smaller skinny anime Thai submissive — elongated zero-fat hardbody, substantial perky heavy breasts with weighted clamps and short chains, flat subtly heaving abs, extremely thick tall spiked collar covering entire neck with large spikes, horse-type bit-gag stretching glossy lips, twin pigtails fanning submissively, armbinder pinning wrists behind back, hoof boots, short hobble chain, faint violet-blue mottling on throat and cheeks, glassy vacant large reflective anime eyes",
+        "personality_cues": ["helpless", "obedient", "panicked", "exhausted", "vacant"]
+      }
+    ],
+    "scenes": [
+      {
+        "scene_id": 1,
+        "title": "Dungeon Setup & Forced Positioning",
+        "description": "The dominant positions the bound submissive over a shallow bowl of thick off-white liquid in a dramatic display of control.",
+        "characters_present": ["Rei", "Mina"],
+        "setting": "dimly spotlighted ancient stone dungeon, cold dripping walls, harsh beams",
+        "camera": "dynamic orbit (front → side → rear) ending in locked overhead shot",
+        "mood": "tense, predatory, impending violation, thick atmosphere",
+        "action": "Rei grips Mina's pigtails, yanks head back into dramatic arch, forces her down to all fours, then presses masked face toward the wide shallow bowl of thick off-white liquid",
+        "prompt_summary": "Rei towers dominantly, fists locked in Mina's pigtails, arching and pressing her masked face downward toward brimming bowl of opaque creamy liquid",
+        "duration_seconds": 10,
+        "transition": "slow fade"
+      },
+      {
+        "scene_id": 2,
+        "title": "Dunking & Forced Gulping Escalation",
+        "description": "Repeated forceful submersions escalate as the submissive struggles to swallow the thick liquid under relentless control.",
+        "characters_present": ["Rei", "Mina"],
+        "setting": "close stone ledge with wide shallow bowl of churning off-white liquid",
+        "camera": "intimate close side-angle push-in, tightening on throat and face, occasional low throat close-ups",
+        "mood": "intense distress, wet chaos, power imbalance",
+        "action": "Rei yanks pigtails downward plunging masked face into liquid, brief pulls up for gasps, repeated deeper dunks, forced swallowing with visible throat pulses and spilling droplets",
+        "prompt_summary": "Rei violently dunks Mina's face into opaque creamy liquid, pulls up for gasping coughs, then slams back under; throat convulses with audible gulps and cyan mottling",
+        "duration_seconds": 14,
+        "transition": "hard cut"
+      },
+      {
+        "scene_id": 3,
+        "title": "Final Deep Dunk & Broken Swallowing Conclusion",
+        "description": "Prolonged full immersion breaks the submissive completely, ending in exhausted surrender over the nearly emptied vessel.",
+        "characters_present": ["Rei", "Mina"],
+        "setting": "low stone ledge, almost drained wide shallow bowl, dripping residue",
+        "camera": "extreme low-angle close through splashing liquid surface → slow pull-back to medium-wide → final overhead freeze",
+        "mood": "climactic surrender, drained exhaustion, absolute domination",
+        "action": "Rei uses two-handed pigtail grip for repeated deep prolonged submersions, final extended hold until convulsions fade, then releases; Mina remains bowed low, dripping and vacant",
+        "prompt_summary": "Rei double-grips braids, forces prolonged full-face immersion in frothy liquid until Mina's body slumps in total exhaustion, head bowed over emptied bowl in defeated arch",
+        "duration_seconds": 16,
+        "transition": "slow fade to black"
+      }
+    ]
   }
 }
