@@ -32,6 +32,13 @@
         .btn:hover { opacity: 0.9; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .generating { animation: pulse 2s ease-in-out infinite; background: linear-gradient(135deg, var(--card), #222); }
+        .card img, .card video { cursor: pointer; }
+        /* Lightbox */
+        .lightbox { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.92); align-items: center; justify-content: center; }
+        .lightbox.active { display: flex; }
+        .lightbox-close { position: absolute; top: 1rem; right: 1.5rem; font-size: 2rem; color: #fff; cursor: pointer; z-index: 1001; line-height: 1; }
+        .lightbox-close:hover { color: var(--accent); }
+        .lightbox img, .lightbox video { max-width: 95vw; max-height: 92vh; border-radius: 6px; }
     </style>
 </head>
 <body>
@@ -40,5 +47,29 @@
         <a href="/new" class="btn">+ New Run</a>
     </div>
     {% block content %}{% endblock %}
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+        <div id="lightbox-content"></div>
+    </div>
+    <script>
+    function openLightbox(src, type) {
+        var box = document.getElementById('lightbox');
+        var content = document.getElementById('lightbox-content');
+        if (type === 'video') {
+            content.innerHTML = '<video src="' + src + '" controls autoplay style="max-width:95vw;max-height:92vh;border-radius:6px;"></video>';
+        } else {
+            content.innerHTML = '<img src="' + src + '" style="max-width:95vw;max-height:92vh;border-radius:6px;">';
+        }
+        box.classList.add('active');
+    }
+    function closeLightbox() {
+        var box = document.getElementById('lightbox');
+        box.classList.remove('active');
+        var content = document.getElementById('lightbox-content');
+        content.innerHTML = '';
+    }
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
+    document.getElementById('lightbox-content').addEventListener('click', function(e) { e.stopPropagation(); });
+    </script>
 </body>
 </html>

@@ -211,7 +211,7 @@ def _render_sse_html(event: Event) -> str:
         name = d.get("name", "")
         return (
             f'<div class="card">'
-            f'<img src="/{path}" alt="{name}">'
+            f'<img src="/{path}" alt="{name}" onclick="openLightbox(\'/{path}\', \'image\')">'
             f"<h3>{name}</h3>"
             f"<p>Score: {score_pct}%</p>"
             f"</div>"
@@ -222,7 +222,7 @@ def _render_sse_html(event: Event) -> str:
         scene_id = d.get("scene_id", "")
         return (
             f'<div class="card">'
-            f'<img src="/{path}" alt="Scene {scene_id}">'
+            f'<img src="/{path}" alt="Scene {scene_id}" onclick="openLightbox(\'/{path}\', \'image\')">'
             f"<h3>Scene {scene_id}</h3>"
             f"<p>Score: {score_pct}%</p>"
             f"</div>"
@@ -243,7 +243,7 @@ def _render_sse_html(event: Event) -> str:
         scene_id = d.get("scene_id", "")
         return (
             f'<div class="card">'
-            f'<video src="/{path}" autoplay loop muted playsinline></video>'
+            f'<video src="/{path}" autoplay loop muted playsinline onclick="openLightbox(\'/{path}\', \'video\')"></video>'
             f"<h3>Scene {scene_id}</h3>"
             f"<p>Score: {score_pct}%</p>"
             f"</div>"
